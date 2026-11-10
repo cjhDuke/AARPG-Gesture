@@ -34,7 +34,7 @@ class DebouncerTest(unittest.TestCase):
 
 class ZoneTest(unittest.TestCase):
     def setUp(self):
-        self.z = ZoneTracker(synth.load_cfg())  # 内 0.12 外 0.22
+        self.z = ZoneTracker(synth.load_cfg())  # 内 0.10 外 0.18
 
     def test_sectors(self):
         cases = {(0.3, 0.0): "right", (-0.3, 0.05): "left",

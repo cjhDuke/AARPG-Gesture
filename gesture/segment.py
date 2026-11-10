@@ -4,15 +4,17 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
+from hand_select import HandSelector
+
 
 @dataclass
 class SegResult:
     backproj: np.ndarray   # 反向投影图（未标定时为 Cr 通道），灰度
     thresh: np.ndarray     # 阈值分割后的二值图
     morph: np.ndarray      # 形态学处理后的二值图
-    mask: np.ndarray       # 最大连通域掩膜（无手则全 0）
+    mask: np.ndarray       # 选中的手的连通域掩膜（无手则全 0）
     has_hand: bool
-    area: int              # 最大连通域面积
+    area: int              # 选中连通域面积
 
 
 def _ellipse(k):
@@ -30,6 +32,7 @@ class Segmenter:
         self.k_close = _ellipse(self.seg["close_kernel"])
         self.k_smooth = _ellipse(self.cal["smooth_kernel"]).astype(np.float32)
         self.k_smooth /= self.k_smooth.sum()
+        self.selector = HandSelector(cfg)
 
     @property
     def calibrated(self):
@@ -46,6 +49,12 @@ class Segmenter:
         hist = cv2.calcHist([patch], [1, 2], None, [bins, bins], [0, 256, 0, 256])
         cv2.normalize(hist, hist, 0, 255, cv2.NORM_MINMAX)
         self.hist = hist
+        # 标定时手就放在中心采样框上：清空跟踪状态，下一帧优先取中心的连通域
+        self.selector.reset(just_calibrated=True)
+
+    def reset_tracking(self):
+        """换操作框等场合：清空手的跟踪状态。"""
+        self.selector.reset()
 
     def reset_calibration(self):
         self.hist = None
@@ -77,18 +86,6 @@ class Segmenter:
         out = cv2.morphologyEx(binary, cv2.MORPH_OPEN, self.k_open)
         return cv2.morphologyEx(out, cv2.MORPH_CLOSE, self.k_close)
 
-    def _largest_component(self, binary):
-        """步骤 6：连通域分析取最大区域；面积过小视为无手。"""
-        n, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
-        empty = np.zeros_like(binary)
-        if n <= 1:
-            return empty, 0
-        idx = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-        area = int(stats[idx, cv2.CC_STAT_AREA])
-        if area < self.seg["min_area_ratio"] * binary.size:
-            return empty, area
-        return (labels == idx).astype(np.uint8) * 255, area
-
     def process(self, roi_bgr):
         ycrcb = self._preprocess(roi_bgr)
         if self.calibrated:
@@ -96,5 +93,6 @@ class Segmenter:
         else:
             bp, th = self._fixed_range(ycrcb)
         morph = self._morphology(th)
-        mask, area = self._largest_component(morph)
+        # 步骤 6：连通域分析 + 有状态选手（跟踪上一帧的手，排除静止的脸）
+        mask, area = self.selector.select(morph, self.seg["min_area_ratio"] * morph.size)
         return SegResult(bp, th, morph, mask, bool(mask.any()), area)

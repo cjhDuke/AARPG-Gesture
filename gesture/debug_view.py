@@ -31,6 +31,28 @@ def draw_overlay(roi, feats, cfg, with_sample_box=True):
     return img
 
 
+def draw_full_overlay(frame, rect, feats, cfg):
+    """阶段 0 用：整幅画面叠加操作框、采样框、方向区、手的轮廓/凸包/质心。
+
+    先在全分辨率上用较粗的线画，之后缩成 128x96 缩略图时才看得清。返回新图。
+    """
+    img = frame.copy()
+    x, y, w, h = rect
+    off = (x, y)
+    c = (x + w // 2, y + h // 2)
+    t = cfg["tracker"]
+    cv2.rectangle(img, (x, y), (x + w - 1, y + h - 1), GREEN, 5)
+    cv2.circle(img, c, int(t["zone_inner"] * w), WHITE, 3)
+    cv2.circle(img, c, int(t["zone_outer"] * w), (180, 180, 180), 3)
+    s = min(int(cfg["calibration"]["sample_size"]), h, w)
+    cv2.rectangle(img, (c[0] - s // 2, c[1] - s // 2), (c[0] + s // 2, c[1] + s // 2), YELLOW, 4)
+    if feats is not None and feats.contour is not None:
+        cv2.drawContours(img, [feats.contour], -1, RED, 4, offset=off)
+        cv2.polylines(img, [feats.hull + np.array(off, np.int32)], True, YELLOW, 3)
+        cv2.circle(img, (int(feats.centroid[0]) + x, int(feats.centroid[1]) + y), 12, BLUE, -1)
+    return img
+
+
 def _fit(img, w, h):
     """等比缩放并居中放入 w x h 的黑底画布（灰度自动转 BGR）。"""
     if img.ndim == 2:

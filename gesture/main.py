@@ -74,8 +74,11 @@ def crop_roi(frame, roi):
     return frame[y:y2, x:x2], (x, y, x2 - x, y2 - y)
 
 
-def encode_stage(stage, roi, seg, feats, cfg):
-    """按阶段号生成缩略图并编码为 JPEG；失败返回 None。"""
+def encode_stage(stage, frame, rect, seg, feats, cfg):
+    """按阶段号生成缩略图并编码为 JPEG；失败返回 None。
+
+    阶段 0 发整幅镜像画面（叠加操作框等）；阶段 1-3 只发操作框区域。
+    """
     if stage == 1:
         img = seg.backproj
     elif stage == 2:
@@ -83,7 +86,7 @@ def encode_stage(stage, roi, seg, feats, cfg):
     elif stage == 3:
         img = seg.morph
     else:
-        img = debug_view.draw_overlay(roi, feats, cfg)
+        img = debug_view.draw_full_overlay(frame, rect, feats, cfg)
     n = cfg["net"]
     scale = n["frame_max_side"] / max(img.shape[:2])
     if scale < 1:
@@ -137,6 +140,7 @@ def run():
                 roi_idx = (roi_idx + 1) % len(cfg["roi_presets"])
                 save_roi_index(roi_idx)
                 debouncer, zones = GestureDebouncer(cfg), ZoneTracker(cfg)
+                segmenter.reset_tracking()  # 操作框尺寸可能变了
             roi, rect = crop_roi(frame, cfg["roi_presets"][roi_idx])
             seg = segmenter.process(roi)
             feats = features.extract(seg.mask, cfg)
@@ -168,7 +172,7 @@ def run():
                      "fps": round(fps, 1), "proc_ms": round(proc_ms, 2),
                      "calibrated": segmenter.calibrated}
             net.send_state(state)
-            jpg = encode_stage(stage, roi, seg, feats, cfg)
+            jpg = encode_stage(stage, frame, rect, seg, feats, cfg)
             if jpg:
                 net.send_frame(stage, jpg)
 
