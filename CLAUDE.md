@@ -1,10 +1,10 @@
 # AARPG-Gesture
 
-手势控制版 2D 像素 ARPG（Godot 4.6）。开始任何工作前先读下面两份文档，不必重新扫描整个项目：
+手势控制的 2D 像素"站桩守卫"小游戏（Godot 4.6 + Python/OpenCV）。开始任何工作前先读下面两份文档，不必重新扫描整个项目：
 
 - @docs/ai/INDEX.md —— 项目结构、输入系统、运行环境
 - @docs/ai/guard-mode-plan.md —— 当前方案：站桩守卫模式 + 传统图像处理手势识别，含进度
-- docs/ai/gesture-plan.md —— 已被取代的旧方案（MediaPipe），仅"复制记录"一节仍有效
+- docs/ai/gesture-plan.md —— 已被取代的旧方案（MediaPipe），仅作历史记录
 
 约定：
 - 本项目是数字图像处理课程项目：输入必须是图像 / 视频，识别用传统图像处理（可调用 OpenCV）。
