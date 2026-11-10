@@ -1,0 +1,51 @@
+{
+  "python": "python",
+  "net": {
+    "host": "127.0.0.1",
+    "state_port": 47800,
+    "command_port": 47801,
+    "frame_max_side": 128,
+    "jpeg_quality": 70,
+    "managed_timeout_s": 5.0
+  },
+  "camera": {
+    "index": 0,
+    "width": 640,
+    "height": 480,
+    "mirror": true,
+    "image_fps": 30
+  },
+  "roi_index": 0,
+  "roi_presets": [
+    {"name": "right-bottom", "x": 390, "y": 220, "w": 250, "h": 260},
+    {"name": "right-top", "x": 390, "y": 0, "w": 250, "h": 260},
+    {"name": "left-top", "x": 0, "y": 0, "w": 250, "h": 260},
+    {"name": "left-bottom", "x": 0, "y": 220, "w": 250, "h": 260}
+  ],
+  "calibration": {
+    "required": true,
+    "sample_size": 60,
+    "hist_bins": 32,
+    "smooth_kernel": 5,
+    "min_backproj": 30
+  },
+  "skin_fixed": {"cr": [135, 180], "cb": [85, 135]},
+  "segment": {
+    "blur_kernel": 5,
+    "open_kernel": 5,
+    "close_kernel": 7,
+    "min_area_ratio": 0.08
+  },
+  "features": {
+    "defect_depth_ratio": 0.12,
+    "defect_max_angle": 90,
+    "palm_min_defects": 3,
+    "fist_solidity": 0.85
+  },
+  "tracker": {
+    "debounce_frames": 2,
+    "fist_release_frames": 3,
+    "zone_inner": 0.12,
+    "zone_outer": 0.22
+  }
+}

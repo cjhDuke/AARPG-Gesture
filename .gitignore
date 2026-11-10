@@ -6,3 +6,7 @@ build/
 bin/
 *.tmp
 
+# 手势识别端
+__pycache__/
+gesture/state.json
+gesture/screenshots/
