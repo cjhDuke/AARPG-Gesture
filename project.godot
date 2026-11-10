@@ -30,6 +30,7 @@ SceneTransition="*uid://bu1cxxl11qpup"
 SaveManager="*uid://o625n35emdh0"
 PauseMenu="*uid://fft2clkfyt2x"
 DialogueSystem="*uid://dr1y8nonhctu1"
+GestureInput="*res://00_Globals/gesture_input.gd"
 
 [display]
 
