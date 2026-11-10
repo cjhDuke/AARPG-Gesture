@@ -1,30 +1,30 @@
 extends CanvasLayer
+## 暂停菜单（autoload: PauseMenu）：RESUME / TITLE / QUIT
 
+const TITLE_SCENE : String = "res://title_scene/title_scene.tscn"
 
 signal shown
 signal hidden
 
-@onready var audio_stream_player: AudioStreamPlayer = $Control/AudioStreamPlayer
-@onready var button_load: Button = $Control/HBoxContainer/Button_Load
-@onready var button_save: Button = $Control/HBoxContainer/Button_Save
-@onready var item_description: Label = $Control/ItemDescription
+@onready var button_resume: Button = %Button_Resume
+@onready var button_title: Button = %Button_Title
+@onready var button_quit: Button = %Button_Quit
 
 var is_paused : bool = false
 
 
-# Called when the node enters the scene tree for the first time.
 func _ready() -> void:
 	hide_pause_menu()
-	button_save.pressed.connect( _on_save_pressed )
-	button_load.pressed.connect( _on_load_pressed )
-	pass # Replace with function body.
+	button_resume.pressed.connect( hide_pause_menu )
+	button_title.pressed.connect( _on_title_pressed )
+	button_quit.pressed.connect( _on_quit_pressed )
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("pause"):
+		if LevelManager.is_loading_level:
+			return
 		if is_paused == false:
-			if DialogueSystem.is_active:
-				return
 			show_pause_menu()
 		else:
 			hide_pause_menu()
@@ -35,8 +35,10 @@ func show_pause_menu() -> void:
 	get_tree().paused = true
 	visible = true
 	is_paused = true
+	button_resume.grab_focus()
 	shown.emit()
-	
+
+
 func hide_pause_menu() -> void:
 	get_tree().paused = false
 	visible = false
@@ -44,26 +46,10 @@ func hide_pause_menu() -> void:
 	hidden.emit()
 
 
-func _on_save_pressed() -> void:
-	if is_paused == false:
-		return
-	SaveManager.save_game()
+func _on_title_pressed() -> void:
 	hide_pause_menu()
-	pass
+	LevelManager.load_new_level( TITLE_SCENE )
 
 
-func _on_load_pressed() -> void:
-	if is_paused == false:
-		return
-	SaveManager.load_game()
-	await LevelManager.level_loaded
-	hide_pause_menu()
-	pass
-
-func update_item_description( new_text : String ) -> void:
-	item_description.text = new_text
-	
-
-func play_audio( audio : AudioStream ) -> void:
-	audio_stream_player.stream = audio
-	audio_stream_player.play()
+func _on_quit_pressed() -> void:
+	get_tree().quit()

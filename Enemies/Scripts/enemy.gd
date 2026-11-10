@@ -7,28 +7,32 @@ signal enemy_destroyed( hit_box : HitBox )
 const DIR_4 = [ Vector2.RIGHT , Vector2.DOWN , Vector2.LEFT , Vector2.UP ]
 
 @export var hp : int = 3
+## 生成时的淡入时长；淡入期间无敌、不造成伤害
+@export var fade_in_time : float = 0.4
 
 var cardinal_direction : Vector2 = Vector2.DOWN
 var direction : Vector2 = Vector2.ZERO
 var player : Player
 var invulnerable : bool = false
 var _is_defeated : bool = false
+## 正在淡入生成中，状态脚本据此暂缓开启攻击判定
+var spawning : bool = false
 
 @onready var animation_player: AnimationPlayer = $AnimationPlayer
 @onready var sprite_2d: Sprite2D = $Sprite2D
 @onready var state_machine : EnemyStateMachine = $EnemyStateMachine
 @onready var hurt_box: HurtBox = $HurtBox
+@onready var hit_box: HitBox = $HitBox
 
 
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
-	if _load_state():
-		return
 	state_machine.initialize( self )
 	player = PlayerManager.player 
 	hurt_box.Damaged.connect( _take_damage )
-	pass # Replace with function body.
+	if fade_in_time > 0.0:
+		_fade_in()
 
 
 # Called every frame. 'delta' is the elapsed time since the previous frame.
@@ -40,7 +44,6 @@ func _physics_process(_delta):
 	if _is_defeated:
 		return
 	move_and_slide()
-	_save_state()
 
 
 func set_direction( _new_direction : Vector2 ) -> bool:
@@ -87,30 +90,16 @@ func _take_damage( hit_box : HitBox ) ->void:
 
 func mark_defeated() -> void:
 	_is_defeated = true
-	_save_state()
 
 
-func _load_state() -> bool:
-	var state := SaveManager.get_scene_node_state(self)
-	if state.is_empty():
-		return false
-	if bool(state.get("defeated", false)):
-		_is_defeated = true
-		queue_free()
-		return true
-	hp = int(state.get("hp", hp))
-	if state.has("pos_x") and state.has("pos_y"):
-		global_position = Vector2(float(state.pos_x), float(state.pos_y))
-	return false
-
-
-func _save_state() -> void:
-	if _is_defeated:
-		SaveManager.set_scene_node_state(self, { defeated = true })
-		return
-	SaveManager.set_scene_node_state(self, {
-		defeated = false,
-		hp = hp,
-		pos_x = global_position.x,
-		pos_y = global_position.y
-	})
+func _fade_in() -> void:
+	spawning = true
+	invulnerable = true
+	hit_box.monitoring = false
+	modulate.a = 0.0
+	var tween := create_tween()
+	tween.tween_property( self, "modulate:a", 1.0, fade_in_time )
+	await tween.finished
+	spawning = false
+	invulnerable = false
+	hit_box.monitoring = true

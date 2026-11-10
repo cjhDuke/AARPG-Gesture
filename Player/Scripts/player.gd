@@ -7,6 +7,8 @@ var invulnerable : bool = false
 var hp : int = 6
 var max_hp : int = 6
 var is_dead : bool = false
+## 为 false 时主角站桩：direction 恒为零，不会走动
+var can_move : bool = true
 
 @onready var animation_player: AnimationPlayer = $AnimationPlayer
 @onready var sprite_2d: Sprite2D = $Sprite2D
@@ -18,6 +20,8 @@ var is_dead : bool = false
 
 signal DirectionChanged( new_direction : Vector2 )
 signal player_damaged( hit_box : HitBox )
+## 血量归零时发出，由关卡决定后续流程
+signal died
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
@@ -30,13 +34,10 @@ func _ready() -> void:
 
 # Called every frame. 'delta' is the elapsed time since the previous frame.
 func _process(delta: float) -> void:
-	if is_dead:
+	if is_dead or not can_move:
 		direction = Vector2.ZERO
 		return
 	
-	#get player's position
-	#direction.x = Input.get_action_strength("right")-Input.get_action_strength("left")
-	#direction.y = Input.get_action_strength("down")-Input.get_action_strength("up")
 	direction = Vector2(
 		Input.get_axis("left", "right"),
 		Input.get_axis("up", "down")
@@ -69,6 +70,17 @@ func set_direction() -> bool:
 	return true
 
 	
+## 直接设置四方向朝向（dir 为上下左右之一），空闲时刷新动画
+func face( dir : Vector2 ) -> void:
+	if not DIR_4.has( dir ):
+		return
+	cardinal_direction = dir
+	DirectionChanged.emit( dir )
+	sprite_2d.scale.x = -1 if dir == Vector2.LEFT else 1
+	if state_machine.current_state is State_Idle:
+		update_animation( "idle" )
+
+
 func update_animation( state : String ) -> void:
 	animation_player.play(state + "_" + anim_direction())
 	pass
@@ -104,8 +116,7 @@ func die() -> void:
 	velocity = Vector2.ZERO
 	state_machine.reset_to_initial_state()
 	hurt_box.monitoring = false
-	PlayerManager.respawn_player_after_death()
-	pass
+	died.emit()
 	
 func make_invulnerable( _duration : float = 1.0 ) -> void:
 	invulnerable = true

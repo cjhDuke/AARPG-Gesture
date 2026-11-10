@@ -1,5 +1,6 @@
 [gd_scene format=3 uid="uid://21t22vjvneei"]
 
+[ext_resource type="Script" path="res://Enemies/Scripts/states/enemy_state_approach.gd" id="approach_state"]
 [ext_resource type="Script" uid="uid://d3hrwgkdyaam2" path="res://Enemies/Scripts/enemy.gd" id="1_t8cwk"]
 [ext_resource type="Texture2D" uid="uid://b8bduxd7punv5" path="res://Player/Sprites/Shadow.png" id="1_wwfkb"]
 [ext_resource type="PackedScene" uid="uid://xjojbl1e3882" path="res://GeneralNodes/HitBox/hit_box.tscn" id="2_fjr0p"]
@@ -7,15 +8,10 @@
 [ext_resource type="PackedScene" uid="uid://chqll71vii5yb" path="res://GeneralNodes/HurtBox/hurt_box.tscn" id="3_2qn7y"]
 [ext_resource type="Script" uid="uid://cg8o7blouk1jc" path="res://Enemies/Scripts/enemy_state_machine.gd" id="4_oij8y"]
 [ext_resource type="AudioStream" uid="uid://6ykcnlbqpeqo" path="res://Enemies/Slime/hit_01.wav" id="5_pydiu"]
-[ext_resource type="Script" uid="uid://cxvj5h7tpnq77" path="res://Enemies/Scripts/states/enemy_state_idle.gd" id="5_q0lue"]
 [ext_resource type="AudioStream" uid="uid://ublhvu2q4jfm" path="res://Enemies/Slime/hit_00.wav" id="6_2qn7y"]
-[ext_resource type="Script" uid="uid://dn0h66un63x20" path="res://Enemies/Scripts/states/enemy_state_wander.gd" id="6_pg00x"]
 [ext_resource type="Texture2D" uid="uid://bvtmwdajx7qbk" path="res://Enemies/Slime/DestroySmoke.png" id="10_843tw"]
 [ext_resource type="Script" uid="uid://devv3gbg7xlg7" path="res://Enemies/Scripts/states/enemy_state_stun.gd" id="10_pydiu"]
 [ext_resource type="Script" uid="uid://dlspkm2wj7d6b" path="res://Enemies/Scripts/states/enemy_state_destroy.gd" id="12_843tw"]
-[ext_resource type="Script" uid="uid://b5hmgcv8b3rue" path="res://Enemies/Scripts/drop_data.gd" id="13_nsi17"]
-[ext_resource type="Resource" uid="uid://safi8ok7u5xk" path="res://Item/apple.tres" id="15_vjyi2"]
-
 [sub_resource type="CircleShape2D" id="CircleShape2D_t1krp"]
 radius = 14.0
 
@@ -661,13 +657,6 @@ _data = {
 &"walk_up": SubResource("Animation_n8fnr")
 }
 
-[sub_resource type="Resource" id="Resource_67htc"]
-script = ExtResource("13_nsi17")
-item = ExtResource("15_vjyi2")
-probability = 33.0
-max_amount = 1
-metadata/_custom_type_script = "uid://b5hmgcv8b3rue"
-
 [sub_resource type="Animation" id="Animation_qqw3w"]
 length = 0.001
 tracks/0/type = "value"
@@ -770,23 +759,17 @@ autoplay = &"idle_down"
 [node name="EnemyStateMachine" type="Node" parent="." unique_id=701848884]
 script = ExtResource("4_oij8y")
 
-[node name="idle" type="Node" parent="EnemyStateMachine" unique_id=1227416581 node_paths=PackedStringArray("after_idle_state")]
-script = ExtResource("5_q0lue")
-after_idle_state = NodePath("../Wander")
-
-[node name="Wander" type="Node" parent="EnemyStateMachine" unique_id=1996305455 node_paths=PackedStringArray("next_state")]
-script = ExtResource("6_pg00x")
-wander_speed = 30.0
-state_animation_duration = 0.7
-next_state = NodePath("../idle")
+[node name="Approach" type="Node" parent="EnemyStateMachine"]
+script = ExtResource("approach_state")
+anim_name = "walk"
+speed = 30.0
 
 [node name="Stun" type="Node" parent="EnemyStateMachine" unique_id=1679230070 node_paths=PackedStringArray("next_state")]
 script = ExtResource("10_pydiu")
-next_state = NodePath("../idle")
+next_state = NodePath("../Approach")
 
 [node name="Destroy" type="Node" parent="EnemyStateMachine" unique_id=1434732567]
 script = ExtResource("12_843tw")
-drops = Array[ExtResource("13_nsi17")]([SubResource("Resource_67htc")])
 
 [node name="AudioStreamPlayer2D" type="AudioStreamPlayer2D" parent="." unique_id=715979421]
 volume_db = -10.0

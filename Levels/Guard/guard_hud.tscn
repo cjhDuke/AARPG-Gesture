@@ -1,0 +1,130 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://Levels/Guard/guard_hud.gd" id="1_hud"]
+[ext_resource type="Texture2D" path="res://Levels/Guard/congratulations.png" id="2_trophy"]
+[ext_resource type="AudioStream" path="res://Levels/Guard/congratulations.mp3" id="3_music"]
+
+[node name="GuardHud" type="CanvasLayer"]
+process_mode = 3
+layer = 3
+script = ExtResource("1_hud")
+
+[node name="Root" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="StatusLabel" type="Label" parent="Root"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -22.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 4
+text = "WAVE 1/5  KILLS 0  BEST 0"
+horizontal_alignment = 1
+
+[node name="BannerLabel" type="Label" parent="Root"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 14
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_top = -40.0
+offset_bottom = -8.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 32
+text = "WAVE 1"
+horizontal_alignment = 1
+
+[node name="ResultPanel" type="Control" parent="Root"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Dim" type="ColorRect" parent="Root/ResultPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.85)
+
+[node name="Trophy" type="Sprite2D" parent="Root/ResultPanel"]
+unique_name_in_owner = true
+position = Vector2(240, 58)
+scale = Vector2(0.28, 0.28)
+texture = ExtResource("2_trophy")
+hframes = 4
+vframes = 2
+
+[node name="ResultTitle" type="Label" parent="Root/ResultPanel"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 112.0
+offset_bottom = 144.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 32
+text = "VICTORY"
+horizontal_alignment = 1
+
+[node name="ResultStats" type="Label" parent="Root/ResultPanel"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 152.0
+offset_bottom = 175.0
+grow_horizontal = 2
+text = "KILLS 0   BEST 0"
+horizontal_alignment = 1
+
+[node name="Buttons" type="HBoxContainer" parent="Root/ResultPanel"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -100.0
+offset_top = 190.0
+offset_right = 100.0
+offset_bottom = 218.0
+grow_horizontal = 2
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="RetryButton" type="Button" parent="Root/ResultPanel/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(90, 26)
+layout_mode = 2
+text = "RETRY"
+
+[node name="TitleButton" type="Button" parent="Root/ResultPanel/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(90, 26)
+layout_mode = 2
+text = "TITLE"
+
+[node name="CongratsMusic" type="AudioStreamPlayer" parent="."]
+unique_name_in_owner = true
+stream = ExtResource("3_music")
