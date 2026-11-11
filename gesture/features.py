@@ -1,6 +1,12 @@
-"""步骤 7-8：轮廓、质心、凸包、凸缺陷、solidity，以及规则分类。"""
-import math
-from dataclasses import dataclass, field
+"""步骤 7-8：轮廓、掌心（距离变换）、小臂方向、张开度，以及张开 / 握拳的原始判定。
+
+张开度 = 掌心到最远轮廓点的距离 ÷ 掌心内切圆半径。
+- 掌心和半径来自距离变换：手掩膜内离边界最远的点及其距离。
+- 找最远点时要排除小臂：小臂是"粗"的（距离变换值大），手指是"细"的，
+  所以把粗的部分去掉掌心圆盘，剩下的又长又不朝上的那块就是小臂，朝它那一侧的轮廓点不参与。
+比值不随手离镜头的远近变化。
+"""
+from dataclasses import dataclass
 
 import cv2
 import numpy as np
@@ -8,13 +14,14 @@ import numpy as np
 
 @dataclass
 class HandFeatures:
-    gesture: str = "none"          # none / palm / fist / two / other
+    gesture: str = "none"          # none / palm / fist / between（落在两个阈值之间）
     contour: np.ndarray = None
-    hull: np.ndarray = None        # 凸包点 (N,1,2)
-    finger_gaps: list = field(default_factory=list)  # [(起点, 最远点, 终点)]
-    defects: int = 0
-    solidity: float = 0.0
-    centroid: tuple = None         # (cx, cy) 像素坐标（操作框内）
+    hull: np.ndarray = None        # 凸包点 (N,1,2)，只用于画面叠加
+    palm: tuple = None             # 掌心 (x, y)，操作框内的像素坐标
+    radius: float = 0.0            # 掌心内切圆半径（像素）
+    far: tuple = None              # 参与计算的最远轮廓点
+    arm_dir: tuple = None          # 小臂方向的单位向量；没找到小臂时为 None
+    open_ratio: float = 0.0
     bbox: tuple = None
 
 
@@ -24,63 +31,43 @@ def largest_contour(mask):
     return max(cnts, key=cv2.contourArea) if cnts else None
 
 
-def centroid_of(contour):
-    """图像矩求质心。"""
-    m = cv2.moments(contour)
-    if m["m00"] == 0:
-        x, y, w, h = cv2.boundingRect(contour)
-        return (x + w / 2.0, y + h / 2.0)
-    return (m["m10"] / m["m00"], m["m01"] / m["m00"])
+def palm_center(filled):
+    """距离变换求掌心和内切圆半径。画面边界按"手的边界"算，手被画面切掉时圆不会贴到边上。"""
+    padded = cv2.copyMakeBorder(filled, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0)
+    dt = cv2.distanceTransform(padded, cv2.DIST_L2, 5)[1:-1, 1:-1]
+    _, radius, _, center = cv2.minMaxLoc(dt)
+    return dt, center, float(radius)
 
 
-def _angle_deg(start, far, end):
-    """起点-最远点-终点在最远点处的夹角（度）。"""
-    v1 = (start[0] - far[0], start[1] - far[1])
-    v2 = (end[0] - far[0], end[1] - far[1])
-    n = math.hypot(*v1) * math.hypot(*v2)
-    if n == 0:
-        return 180.0
-    c = max(-1.0, min(1.0, (v1[0] * v2[0] + v1[1] * v2[1]) / n))
-    return math.degrees(math.acos(c))
-
-
-def finger_gaps(contour, size, fcfg):
-    """凸缺陷筛选：深度 > 阈值（相对手外接框尺寸）且夹角 < 上限的认为是指缝。"""
-    hull_idx = cv2.convexHull(contour, returnPoints=False)
-    if hull_idx is None or len(hull_idx) < 3:
-        return []
-    try:
-        defects = cv2.convexityDefects(contour, hull_idx)
-    except cv2.error:
-        return []
-    if defects is None:
-        return []
-    min_depth = fcfg["defect_depth_ratio"] * size
-    gaps = []
-    for s, e, f, d in defects.reshape(-1, 4):
-        if d / 256.0 <= min_depth:
+def arm_direction(dt, center, radius, fcfg):
+    """找小臂方向（单位向量），找不到返回 None。"""
+    px, py = center
+    thick = (dt > fcfg["arm_thick_ratio"] * radius).astype(np.uint8)
+    cv2.circle(thick, (int(px), int(py)), int(fcfg["arm_palm_disc"] * radius), 0, -1)
+    n, labels, stats, cents = cv2.connectedComponentsWithStats(thick, connectivity=8)
+    best, best_area = None, fcfg["arm_min_area"] * radius * radius
+    for i in range(1, n):
+        area = stats[i, cv2.CC_STAT_AREA]
+        if area <= best_area:
             continue
-        start, end, far = (tuple(int(v) for v in contour[i][0]) for i in (s, e, f))
-        if _angle_deg(start, far, end) < fcfg["defect_max_angle"]:
-            gaps.append((start, far, end))
-    return gaps
+        ys, xs = np.nonzero(labels == i)
+        if np.hypot(xs - px, ys - py).max() < fcfg["arm_min_reach"] * radius:
+            continue  # 太短：是掌根之类的残余，不是小臂
+        v = cents[i] - (px, py)
+        norm = float(np.hypot(v[0], v[1]))
+        if norm < 1e-6 or v[1] / norm < fcfg["arm_min_down"]:
+            continue  # 小臂不会从上方伸进来；朝上的粗块是并拢的手指
+        best, best_area = (v[0] / norm, v[1] / norm), area
+    return best
 
 
-def solidity_of(contour, hull):
-    """轮廓面积 / 凸包面积。"""
-    hull_area = cv2.contourArea(hull)
-    return cv2.contourArea(contour) / hull_area if hull_area > 0 else 0.0
-
-
-def classify(n_gaps, solidity, fcfg):
-    """基于规则的手势分类。"""
-    if n_gaps >= fcfg["palm_min_defects"]:
-        return "palm"
-    if n_gaps == 1:
-        return "two"
-    if n_gaps == 0 and solidity >= fcfg["fist_solidity"]:
+def classify(open_ratio, fcfg):
+    """原始判定：低于下阈值为拳，高于上阈值为掌，中间交给时序滞回。"""
+    if open_ratio < fcfg["fist_max_ratio"]:
         return "fist"
-    return "other"
+    if open_ratio > fcfg["palm_min_ratio"]:
+        return "palm"
+    return "between"
 
 
 def extract(mask, cfg):
@@ -89,9 +76,24 @@ def extract(mask, cfg):
     contour = largest_contour(mask) if mask.any() else None
     if contour is None or len(contour) < 5:
         return HandFeatures()
-    x, y, w, h = cv2.boundingRect(contour)
-    hull = cv2.convexHull(contour)
-    gaps = finger_gaps(contour, max(w, h), fcfg)
-    sol = solidity_of(contour, hull)
-    return HandFeatures(classify(len(gaps), sol, fcfg), contour, hull, gaps,
-                        len(gaps), sol, centroid_of(contour), (x, y, w, h))
+    filled = np.zeros_like(mask)
+    cv2.drawContours(filled, [contour], -1, 255, -1)
+    dt, center, radius = palm_center(filled)
+    if radius < 1.0:
+        return HandFeatures()
+    pts = contour.reshape(-1, 2).astype(np.float32)
+    v = pts - np.float32(center)
+    dist = np.hypot(v[:, 0], v[:, 1])
+    arm = arm_direction(dt, center, radius, fcfg)
+    ok = np.ones(len(pts), bool)
+    if arm is not None:
+        cos = (v[:, 0] * arm[0] + v[:, 1] * arm[1]) / np.maximum(dist, 1e-6)
+        ok = cos < fcfg["arm_exclude_cos"]
+        if not ok.any():
+            ok[:] = True
+    idx = np.nonzero(ok)[0]
+    j = int(idx[np.argmax(dist[idx])])
+    ratio = float(dist[j]) / radius
+    return HandFeatures(classify(ratio, fcfg), contour, cv2.convexHull(contour),
+                        (float(center[0]), float(center[1])), radius,
+                        (int(pts[j][0]), int(pts[j][1])), arm, ratio, cv2.boundingRect(contour))

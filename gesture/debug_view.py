@@ -9,47 +9,43 @@ TILE_W, TILE_H = 320, 384
 GREEN, YELLOW, RED, BLUE, WHITE = (0, 255, 0), (0, 255, 255), (0, 0, 255), (255, 128, 0), (255, 255, 255)
 
 
-def draw_overlay(roi, feats, cfg, with_sample_box=True):
-    """原图叠加：轮廓、凸包、指缝点、质心、方向区内外圈、采样框。返回新图。"""
+def _draw_hand(img, feats, off=(0, 0), thick=1):
+    """轮廓、凸包、掌心内切圆、到最远点的连线、小臂方向。"""
+    ox, oy = off
+    c = (int(feats.palm[0]) + ox, int(feats.palm[1]) + oy)
+    cv2.drawContours(img, [feats.contour], -1, GREEN, 2 * thick, offset=off)
+    cv2.polylines(img, [feats.hull + np.array(off, np.int32)], True, YELLOW, thick)
+    cv2.circle(img, c, int(feats.radius), BLUE, 2 * thick)
+    cv2.line(img, c, (feats.far[0] + ox, feats.far[1] + oy), RED, 2 * thick)
+    if feats.arm_dir is not None:
+        tip = (int(c[0] + feats.arm_dir[0] * feats.radius * 1.5), int(c[1] + feats.arm_dir[1] * feats.radius * 1.5))
+        cv2.line(img, c, tip, WHITE, thick)
+    cv2.circle(img, c, 3 * thick, BLUE, -1)
+
+
+def draw_overlay(roi, feats, cfg):
+    """原图叠加：轮廓、凸包、掌心圆、最远点连线、方向区内外圈。返回新图。"""
     img = roi.copy()
     h, w = img.shape[:2]
     c = (w // 2, h // 2)
     t = cfg["tracker"]
     cv2.circle(img, c, int(t["zone_inner"] * w), WHITE, 1)
     cv2.circle(img, c, int(t["zone_outer"] * w), (180, 180, 180), 1)
-    if with_sample_box:
-        s = min(int(cfg["calibration"]["sample_size"]), h, w)
-        cv2.rectangle(img, (c[0] - s // 2, c[1] - s // 2), (c[0] + s // 2, c[1] + s // 2), YELLOW, 1)
     if feats is not None and feats.contour is not None:
-        cv2.drawContours(img, [feats.contour], -1, GREEN, 2)
-        cv2.polylines(img, [feats.hull], True, YELLOW, 1)
-        for start, far, end in feats.finger_gaps:
-            cv2.circle(img, far, 4, RED, -1)
-            cv2.circle(img, start, 3, RED, 1)
-            cv2.circle(img, end, 3, RED, 1)
-        cv2.circle(img, (int(feats.centroid[0]), int(feats.centroid[1])), 5, BLUE, -1)
+        _draw_hand(img, feats)
     return img
 
 
 def draw_full_overlay(frame, rect, feats, cfg):
-    """阶段 0 用：整幅画面叠加操作框、采样框、方向区、手的轮廓/凸包/质心。
+    """阶段 0 用：整幅画面叠加操作框、手的轮廓 / 掌心圆 / 最远点连线。
 
     先在全分辨率上用较粗的线画，之后缩成 128x96 缩略图时才看得清。返回新图。
     """
     img = frame.copy()
     x, y, w, h = rect
-    off = (x, y)
-    c = (x + w // 2, y + h // 2)
-    t = cfg["tracker"]
     cv2.rectangle(img, (x, y), (x + w - 1, y + h - 1), GREEN, 5)
-    cv2.circle(img, c, int(t["zone_inner"] * w), WHITE, 3)
-    cv2.circle(img, c, int(t["zone_outer"] * w), (180, 180, 180), 3)
-    s = min(int(cfg["calibration"]["sample_size"]), h, w)
-    cv2.rectangle(img, (c[0] - s // 2, c[1] - s // 2), (c[0] + s // 2, c[1] + s // 2), YELLOW, 4)
     if feats is not None and feats.contour is not None:
-        cv2.drawContours(img, [feats.contour], -1, RED, 4, offset=off)
-        cv2.polylines(img, [feats.hull + np.array(off, np.int32)], True, YELLOW, 3)
-        cv2.circle(img, (int(feats.centroid[0]) + x, int(feats.centroid[1]) + y), 12, BLUE, -1)
+        _draw_hand(img, feats, (x, y), thick=2)
     return img
 
 
@@ -76,13 +72,14 @@ def _text_panel(info):
     lines = [
         "gesture : %s (raw %s)" % (info["gesture"], info["raw"]),
         "zone    : %s" % info["zone"],
-        "defects : %d" % info["defects"],
-        "solidity: %.2f" % info["solidity"],
+        "open ratio: %.2f" % info["open_ratio"],
+        "palm r  : %.0f px" % info["radius"],
         "fps     : %.1f" % info["fps"],
         "proc    : %.1f ms" % info["proc_ms"],
-        "calibrated: %s" % ("YES" if info["calibrated"] else "NO - press c"),
+        "background: %s" % ("OK" if info["calibrated"] else
+                            "capturing..." if info["calibrating"] else "NONE - press c"),
         "",
-        "[c] calibrate (hand on yellow box)",
+        "[c] capture background (hand OUT)",
         "[r] move ROI (keep face out)",
         "[s] save screenshot",
         "[v] start / stop recording",
@@ -102,15 +99,12 @@ def compose(frame, roi_rect, roi, seg, feats, info, cfg):
     x, y, w, h = roi_rect
     full = frame.copy()
     cv2.rectangle(full, (x, y), (x + w, y + h), GREEN, 2)
-    s = int(cfg["calibration"]["sample_size"])
-    cx, cy = x + w // 2, y + h // 2
-    cv2.rectangle(full, (cx - s // 2, cy - s // 2), (cx + s // 2, cy + s // 2), YELLOW, 2)
     tiles = [
         _title(_fit(full, TILE_W, TILE_H), "1 Frame + ROI"),
-        _title(_fit(seg.backproj, TILE_W, TILE_H), "2 BackProject"),
-        _title(_fit(seg.thresh, TILE_W, TILE_H), "3 Threshold"),
+        _title(_fit(seg.diff, TILE_W, TILE_H), "2 Background diff (chroma)"),
+        _title(_fit(seg.thresh, TILE_W, TILE_H), "3 Foreground AND skin"),
         _title(_fit(seg.morph, TILE_W, TILE_H), "4 Morphology"),
-        _title(_fit(draw_overlay(roi, feats, cfg), TILE_W, TILE_H), "5 Contour/Hull/Defects"),
+        _title(_fit(draw_overlay(roi, feats, cfg), TILE_W, TILE_H), "5 Contour / palm circle / reach"),
         _text_panel(info),
     ]
     return np.vstack([np.hstack(tiles[:3]), np.hstack(tiles[3:])])

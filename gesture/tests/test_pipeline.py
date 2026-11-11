@@ -14,40 +14,67 @@ from segment import Segmenter  # noqa: E402
 class PipelineTest(unittest.TestCase):
     def setUp(self):
         self.cfg = synth.load_cfg()
+        self.seg = synth.make_segmenter(self.cfg)
 
     def run_pipeline(self, img, seg=None):
-        seg = seg or Segmenter(self.cfg)
-        res = seg.process(img)
+        res = (seg or self.seg).process(img)
         return res, features.extract(res.mask, self.cfg)
 
-    def test_default_skin_in_fixed_range(self):
+    def test_skin_color_in_range(self):
         ycc = cv2.cvtColor(np.uint8([[synth.SKIN]]), cv2.COLOR_BGR2YCrCb)[0, 0]
-        cr, cb = self.cfg["skin_fixed"]["cr"], self.cfg["skin_fixed"]["cb"]
+        cr, cb = self.cfg["skin_range"]["cr"], self.cfg["skin_range"]["cb"]
         self.assertTrue(cr[0] <= ycc[1] <= cr[1] and cb[0] <= ycc[2] <= cb[1], ycc)
 
     def test_fist(self):
         res, f = self.run_pipeline(synth.draw_hand(0))
-        self.assertEqual(f.gesture, "fist", (f.defects, f.solidity))
+        self.assertEqual(f.gesture, "fist", f.open_ratio)
+        self.assertLess(f.open_ratio, 1.3)
 
     def test_palm(self):
         res, f = self.run_pipeline(synth.draw_hand(5))
-        self.assertEqual(f.gesture, "palm", (f.defects, f.solidity))
-        self.assertEqual(f.defects, 4)
+        self.assertEqual(f.gesture, "palm", f.open_ratio)
+        self.assertGreater(f.open_ratio, 2.5)
 
-    def test_two(self):
-        res, f = self.run_pipeline(synth.draw_hand(2))
-        self.assertEqual(f.gesture, "two", (f.defects, f.solidity))
+    def test_palm_center_and_radius(self):
+        for n in (0, 5):
+            res, f = self.run_pipeline(synth.draw_hand(n, center=(100, 250)))
+            self.assertAlmostEqual(f.palm[0], 100, delta=5)
+            self.assertAlmostEqual(f.palm[1], 250, delta=8)
+            self.assertAlmostEqual(f.radius, 50, delta=6)
 
-    def test_centroid(self):
-        img = synth.draw_hand(0, center=(100, 250))
-        res, f = self.run_pipeline(img)
-        self.assertAlmostEqual(f.centroid[0], 100, delta=5)
-        self.assertAlmostEqual(f.centroid[1], 250, delta=5)
+    def test_ratio_scale_invariant(self):
+        _, big = self.run_pipeline(synth.draw_hand(5, center=(140, 220), r=50))
+        small_img = cv2.resize(synth.draw_hand(5, center=(140, 220), r=50), None, fx=0.6, fy=0.6,
+                               interpolation=cv2.INTER_NEAREST)
+        canvas = synth.canvas()
+        canvas[100:100 + small_img.shape[0], 50:50 + small_img.shape[1]] = small_img
+        _, small = self.run_pipeline(canvas)
+        self.assertEqual(small.gesture, "palm")
+        self.assertAlmostEqual(big.open_ratio, small.open_ratio, delta=0.35)
+
+    def test_fist_with_forearm_stays_fist(self):
+        for arm in ("down", "left"):
+            res, f = self.run_pipeline(synth.draw_hand(0, center=(150, 150), arm=arm))
+            self.assertIsNotNone(f.arm_dir, arm)
+            self.assertEqual(f.gesture, "fist", (arm, f.open_ratio))
+            self.assertAlmostEqual(f.palm[0], 150, delta=8)
+            self.assertAlmostEqual(f.palm[1], 150, delta=8)
+
+    def test_palm_with_forearm_stays_palm(self):
+        res, f = self.run_pipeline(synth.draw_hand(5, center=(150, 190), arm="down"))
+        self.assertEqual(f.gesture, "palm", f.open_ratio)
+        self.assertLess(f.far[1], 190)  # 最远点在手指上，不在小臂上
+
+    def test_between_thresholds(self):
+        fc = self.cfg["features"]
+        mid = (fc["fist_max_ratio"] + fc["palm_min_ratio"]) / 2
+        self.assertEqual(features.classify(mid, fc), "between")
 
     def test_empty_is_none(self):
         res, f = self.run_pipeline(synth.canvas())
         self.assertFalse(res.has_hand)
         self.assertEqual(f.gesture, "none")
+        self.assertIsNone(f.palm)
 
     def test_small_blob_is_none(self):
         img = synth.canvas()
@@ -55,17 +82,66 @@ class PipelineTest(unittest.TestCase):
         res, f = self.run_pipeline(img)
         self.assertEqual(f.gesture, "none")
 
-    def test_calibration_nondefault_color(self):
-        blue = (200, 120, 60)  # 偏蓝，Cr 远低于默认范围
-        img = synth.draw_hand(5, color=blue, center=(140, 180))
+
+class BackgroundTest(unittest.TestCase):
+    def setUp(self):
+        self.cfg = synth.load_cfg()
+
+    def test_uncalibrated_outputs_nothing(self):
         seg = Segmenter(self.cfg)
-        res, f = self.run_pipeline(img, seg)
-        self.assertEqual(f.gesture, "none")      # 未标定：固定范围找不到
-        seg.calibrate(img)
+        res = seg.process(synth.draw_hand(5))
+        self.assertFalse(seg.calibrated)
+        self.assertFalse(res.has_hand)
+
+    def test_calibrate_collects_frames(self):
+        seg = Segmenter(self.cfg)
+        seg.calibrate()
+        for _ in range(int(self.cfg["background"]["frames"])):
+            self.assertTrue(seg.calibrating)
+            self.assertFalse(seg.process(synth.canvas()).has_hand)
         self.assertTrue(seg.calibrated)
-        res, f = self.run_pipeline(img, seg)
+        self.assertFalse(seg.calibrating)
+        self.assertTrue(seg.process(synth.draw_hand(0)).has_hand)
+
+    def test_static_skin_colored_background_ignored(self):
+        # 背景里本来就有一大块肤色（米色墙面）：不能被当成手
+        wall = synth.canvas()
+        cv2.rectangle(wall, (0, 0), (120, 200), synth.SKIN, -1)
+        seg = synth.make_segmenter(self.cfg, wall)
+        self.assertFalse(seg.process(wall).has_hand)
+        hand = wall.copy()
+        cv2.circle(hand, (200, 260), 45, synth.SKIN, -1)
+        res = seg.process(hand)
         self.assertTrue(res.has_hand)
-        self.assertEqual(f.gesture, "palm", (f.defects, f.solidity))
+        f = features.extract(res.mask, self.cfg)
+        self.assertAlmostEqual(f.palm[0], 200, delta=6)
+
+    def test_moving_non_skin_object_ignored(self):
+        seg = synth.make_segmenter(self.cfg)
+        img = synth.canvas()
+        cv2.circle(img, (140, 180), 60, synth.SLEEVE, -1)
+        self.assertFalse(seg.process(img).has_hand)
+
+    def test_brightness_drift_tolerated(self):
+        seg = synth.make_segmenter(self.cfg)
+        brighter = synth.canvas((105, 105, 105))
+        for _ in range(60):
+            self.assertFalse(seg.process(brighter).has_hand)
+        self.assertAlmostEqual(float(seg.bg[0, 0, 0]), 105, delta=4)  # 背景跟上了亮度变化
+
+    def test_still_hand_not_absorbed(self):
+        seg = synth.make_segmenter(self.cfg)
+        img = synth.draw_hand(0)
+        for _ in range(120):
+            res = seg.process(img)
+        self.assertTrue(res.has_hand)
+
+    def test_roi_resize_needs_recalibration(self):
+        seg = synth.make_segmenter(self.cfg)
+        small = cv2.resize(synth.draw_hand(0), (200, 250))
+        res = seg.process(small)  # 尺寸变化：背景作废，不能崩
+        self.assertEqual(res.mask.shape, (250, 200))
+        self.assertFalse(seg.calibrated)
 
 
 if __name__ == "__main__":

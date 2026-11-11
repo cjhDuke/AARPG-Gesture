@@ -1,6 +1,6 @@
-"""录像：把镜像后的原始画面存成视频，连同标定直方图和操作框下标，供离线调参回放。
+"""录像：把镜像后的原始画面存成视频，连同背景模型和操作框下标，供离线调参回放。
 
-每段录像三个文件（同名不同后缀）：.avi 画面、.json 元数据、.npy 肤色直方图（已标定时才有）。
+每段录像三个文件（同名不同后缀）：.avi 画面、.json 元数据、.npy 背景模型（已标定时才有）。
 回放：python main.py --video recordings/xxx.avi（会自动读取旁边的 .json / .npy）。
 """
 import json
@@ -30,7 +30,7 @@ class Recorder:
     def elapsed(self):
         return time.monotonic() - self._start if self.active else 0.0
 
-    def start(self, frame, roi_index, hist):
+    def start(self, frame, roi_index, bg):
         """开始录像，返回视频路径；打不开写入器时返回 None。"""
         os.makedirs(self.out_dir, exist_ok=True)
         base = os.path.join(self.out_dir, time.strftime("%Y%m%d_%H%M%S"))
@@ -42,17 +42,17 @@ class Recorder:
         self._writer, self._base = writer, base
         self._start, self._frames = time.monotonic(), 0
         self._meta = {"mirrored": True, "width": w, "height": h}
-        self.update_meta(roi_index, hist)
+        self.update_meta(roi_index, bg)
         return base + ".avi"
 
-    def update_meta(self, roi_index, hist):
+    def update_meta(self, roi_index, bg):
         """录像期间换了操作框或重新标定时调用：以最后一次为准。"""
         if not self.active:
             return
         self._meta["roi_index"] = int(roi_index)
-        self._meta["calibrated"] = hist is not None
-        if hist is not None:
-            np.save(self._base + ".npy", hist)
+        self._meta["calibrated"] = bg is not None
+        if bg is not None:
+            np.save(self._base + ".npy", bg)
         self._write_meta()
 
     def write(self, frame):
@@ -82,14 +82,14 @@ class Recorder:
 
 
 def load_sidecar(video_path):
-    """读取录像旁边的元数据和直方图；没有则返回 (None, None)。"""
+    """读取录像旁边的元数据和背景模型；没有则返回 (None, None)。"""
     base = os.path.splitext(video_path)[0]
     try:
         with open(base + ".json", "r", encoding="utf-8") as f:
             meta = json.load(f)
     except (OSError, ValueError):
         return None, None
-    hist = None
+    bg = None
     if os.path.exists(base + ".npy"):
-        hist = np.load(base + ".npy").astype(np.float32)
-    return meta, hist
+        bg = np.load(base + ".npy").astype(np.float32)
+    return meta, bg

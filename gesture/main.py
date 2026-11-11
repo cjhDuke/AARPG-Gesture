@@ -13,7 +13,7 @@ from capture import CameraSource, ImageSource, VideoSource
 from net import Net
 from recorder import Recorder, load_sidecar
 from segment import Segmenter
-from tracker import GestureDebouncer, ZoneTracker
+from tracker import GestureDebouncer, PointSmoother, ZoneTracker
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -84,7 +84,7 @@ def encode_stage(stage, frame, rect, seg, feats, cfg):
     阶段 0 发整幅镜像画面（叠加操作框等）；阶段 1-3 只发操作框区域。
     """
     if stage == 1:
-        img = seg.backproj
+        img = seg.diff
     elif stage == 2:
         img = seg.thresh
     elif stage == 3:
@@ -118,18 +118,20 @@ def run():
         print("错误：无法绑定命令端口（%s）。可能已有一个识别进程在运行，请先关掉它。" % e, file=sys.stderr)
         return 3
     segmenter = Segmenter(cfg)
-    debouncer, zones = GestureDebouncer(cfg), ZoneTracker(cfg)
+    debouncer, zones, smoother = GestureDebouncer(cfg), ZoneTracker(cfg), PointSmoother(cfg)
     view = debug_view.DebugView(os.path.join(HERE, "screenshots")) if show_window else None
     stage, seq = 0, 0
     roi_idx = load_roi_index(cfg)
-    if args.video:  # 回放自己录的视频：沿用录制时的操作框和肤色标定
-        meta, hist = load_sidecar(args.video)
+    if args.video:  # 回放自己录的视频：沿用录制时的操作框和背景模型
+        meta, bg = load_sidecar(args.video)
         if meta:
             roi_idx = int(meta.get("roi_index", roi_idx)) % len(cfg["roi_presets"])
-            if hist is not None:
-                segmenter.set_hist(hist)
+            if bg is not None and bg.ndim == 3:
+                segmenter.set_background(bg)
     recorder = Recorder(os.path.join(HERE, "recordings"), cfg.get("record_max_seconds", 30.0))
     toggle_rec = False
+    auto_cal_at = int(cfg["calibration"].get("auto_start_frame", 0))
+    was_calibrated = segmenter.calibrated
     cycle_roi = False
     last_ping = time.monotonic()
     fps, last_t, n_done, proc_sum = 0.0, None, 0, 0.0
@@ -151,7 +153,7 @@ def run():
                 if recorder.active:
                     print("录像已保存：%s" % recorder.stop())
                 else:
-                    path = recorder.start(frame, roi_idx, segmenter.hist)
+                    path = recorder.start(frame, roi_idx, segmenter.bg)
                     print("开始录像：%s" % path if path else "错误：无法创建录像文件。")
             if recorder.active and recorder.write(frame):  # 写的是未叠加任何标记的原始画面
                 print("录像到达时长上限，已自动保存。")
@@ -160,23 +162,29 @@ def run():
                 cycle_roi = False
                 roi_idx = (roi_idx + 1) % len(cfg["roi_presets"])
                 save_roi_index(roi_idx)
-                recorder.update_meta(roi_idx, segmenter.hist)
                 debouncer, zones = GestureDebouncer(cfg), ZoneTracker(cfg)
-                segmenter.reset_tracking()  # 操作框尺寸可能变了
+                smoother.reset()
+                segmenter.calibrate()  # 换了位置，背景要重新采集
             roi, rect = crop_roi(frame, cfg["roi_presets"][roi_idx])
+            # 开机后自动采一次背景（此时手通常不在框里）；不对就按 F3 / c 重采
+            if auto_cal_at and n_done == auto_cal_at and not segmenter.calibrated and not segmenter.calibrating:
+                segmenter.calibrate()
             seg = segmenter.process(roi)
+            if segmenter.calibrated and not was_calibrated:
+                recorder.update_meta(roi_idx, segmenter.bg)
+            was_calibrated = segmenter.calibrated
             feats = features.extract(seg.mask, cfg)
-            # 未标定时固定范围容易把脸和背景当成手，所以默认要求先标定才输出手势
-            active = segmenter.calibrated or not cfg["calibration"]["required"]
-            gesture = debouncer.update(feats.gesture if active else "none")
+            gesture = debouncer.update(feats.gesture)
             w, h = rect[2], rect[3]
-            if feats.centroid and active:
-                cx, cy = feats.centroid
+            if feats.palm:
+                cx, cy = feats.palm
                 zone = zones.update(True, (cx - w / 2) / w, (cy - h / 2) / w)
                 ncx, ncy = cx / w, cy / h
+                px, py = smoother.update(ncx, ncy)
             else:
                 zone = zones.update(False)
-                ncx = ncy = 0.5
+                smoother.reset()
+                ncx = ncy = px = py = 0.5
             proc_ms = (time.perf_counter() - t0) * 1000.0
 
             now = time.monotonic()
@@ -188,11 +196,12 @@ def run():
             proc_sum += proc_ms
             seq += 1
 
-            state = {"seq": seq, "t_ms": round(t_ms, 1), "hand": bool(feats.centroid) and active,
+            state = {"seq": seq, "t_ms": round(t_ms, 1), "hand": feats.palm is not None,
                      "gesture": gesture, "zone": zone, "cx": round(ncx, 3), "cy": round(ncy, 3),
-                     "defects": feats.defects, "solidity": round(feats.solidity, 3),
+                     "px": round(px, 3), "py": round(py, 3),
+                     "open_ratio": round(feats.open_ratio, 2), "radius": round(feats.radius / w, 3),
                      "fps": round(fps, 1), "proc_ms": round(proc_ms, 2),
-                     "calibrated": segmenter.calibrated}
+                     "calibrated": segmenter.calibrated, "calibrating": segmenter.calibrating}
             net.send_state(state)
             jpg = encode_stage(stage, frame, rect, seg, feats, cfg)
             if jpg:
@@ -203,8 +212,7 @@ def run():
                 if name == "ping":
                     last_ping = now
                 elif name == "calibrate":
-                    segmenter.calibrate(roi)
-                    recorder.update_meta(roi_idx, segmenter.hist)
+                    segmenter.calibrate()
                 elif name == "record":
                     toggle_rec = True
                 elif name == "stage" and cmd.get("value") in (0, 1, 2, 3):
@@ -216,16 +224,16 @@ def run():
 
             if view:
                 info = {"gesture": gesture, "raw": feats.gesture, "zone": zone,
-                        "defects": feats.defects, "solidity": feats.solidity,
+                        "open_ratio": feats.open_ratio, "radius": feats.radius,
                         "fps": fps, "proc_ms": proc_ms, "calibrated": segmenter.calibrated,
+                        "calibrating": segmenter.calibrating,
                         "rec_s": recorder.elapsed if recorder.active else None}
                 board = debug_view.compose(frame, rect, roi, seg, feats, info, cfg)
                 key = view.show(board)
                 if key == "q":
                     break
                 if key == "c":
-                    segmenter.calibrate(roi)
-                    recorder.update_meta(roi_idx, segmenter.hist)
+                    segmenter.calibrate()
                 elif key == "v":
                     toggle_rec = True
                 elif key == "r":

@@ -1,4 +1,4 @@
-"""手的选择与跟踪：在形态学处理后的所有连通域里挑出"那只手"，避免把脸（同为肤色）当成手。
+"""手的选择与跟踪：在形态学处理后的所有连通域里挑出"那只手"，避免把晃动的脸（同为肤色的前景）当成手。
 
 状态：
 - prev_hand：上一帧选中的手的掩膜，None 表示当前没在跟踪。
@@ -21,13 +21,11 @@ class HandSelector:
         self.alpha = float(t["static_alpha"])
         self.prev_hand = None
         self.static_avg = None
-        self.just_calibrated = False
 
-    def reset(self, just_calibrated=False):
-        """清空全部状态。just_calibrated=True 时下一次选择优先取包含操作框中心的连通域。"""
+    def reset(self):
+        """清空全部状态。"""
         self.prev_hand = None
         self.static_avg = None
-        self.just_calibrated = just_calibrated
 
     @property
     def tracking(self):
@@ -36,7 +34,7 @@ class HandSelector:
     def select(self, morph, min_area):
         """返回 (手的掩膜 uint8 0/255, 面积)；无手时掩膜全 0。"""
         if self.static_avg is None or self.static_avg.shape != morph.shape:
-            # 首帧或操作框尺寸变了：丢掉旧状态（保留"刚标定"标志）
+            # 首帧或操作框尺寸变了：丢掉旧状态
             self.prev_hand = None
             self.static_avg = np.zeros(morph.shape, np.float32)
 
@@ -53,14 +51,7 @@ class HandSelector:
             if best > 0 and overlap[best] > 0 and areas[best] >= min_area:
                 chosen = best
         else:
-            if self.just_calibrated and n > 1:
-                h, w = morph.shape
-                c = int(labels[h // 2, w // 2])
-                if c > 0 and areas[c] >= min_area:
-                    chosen = c
-            if chosen == 0:
-                chosen = self._recapture(labels, areas, n, min_area)
-        self.just_calibrated = False
+            chosen = self._recapture(labels, areas, n, min_area)
 
         if chosen > 0:
             hand = (labels == chosen).astype(np.uint8) * 255

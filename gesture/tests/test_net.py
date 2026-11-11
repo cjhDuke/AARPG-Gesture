@@ -9,8 +9,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import synth  # noqa: E402
 from net import Net  # noqa: E402
 
-FIELDS = {"seq", "t_ms", "hand", "gesture", "zone", "cx", "cy", "defects",
-          "solidity", "fps", "proc_ms", "calibrated"}
+FIELDS = {"seq", "t_ms", "hand", "gesture", "zone", "cx", "cy", "px", "py",
+          "open_ratio", "radius", "fps", "proc_ms", "calibrated", "calibrating"}
 STATE_PORT, CMD_PORT = 47900, 47901  # 避开真实端口 47800/47801
 
 
