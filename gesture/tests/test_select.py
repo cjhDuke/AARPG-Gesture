@@ -88,13 +88,13 @@ class RoiAndStageTest(unittest.TestCase):
         self.assertEqual(feats.gesture, "fist")
         jpg = main.encode_stage(0, frame, rect, res, feats, self.cfg)
         img = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
-        self.assertEqual(img.shape[:2], (96, 128))  # 阶段 0 是整幅画面
+        self.assertEqual(img.shape[:2], (240, 320))  # 阶段 0 是整幅画面
         self.assertLess(len(jpg), 60000)
         for stage in (1, 2, 3):
             jpg1 = main.encode_stage(stage, frame, rect, res, feats, self.cfg)
             img1 = cv2.imdecode(np.frombuffer(jpg1, np.uint8), cv2.IMREAD_GRAYSCALE)
-            self.assertEqual(max(img1.shape), 128)
-            self.assertNotEqual(img1.shape, (96, 128))  # 操作框区域，不是整幅
+            self.assertEqual(max(img1.shape), 320)
+            self.assertNotEqual(img1.shape, (240, 320))  # 操作框区域，不是整幅
 
 
 if __name__ == "__main__":
