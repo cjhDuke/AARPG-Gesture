@@ -1,10 +1,10 @@
 # AARPG-Gesture
 
-手势控制的 2D 像素"站桩守卫"小游戏（Godot 4.6 + Python/OpenCV）。开始任何工作前先读下面两份文档，不必重新扫描整个项目：
+手势控制的 2D 像素"手引生存"小游戏（Godot 4.6 + Python/OpenCV）。开始任何工作前先读下面两份文档，不必重新扫描整个项目：
 
 - @docs/ai/INDEX.md —— 项目结构、输入系统、运行环境
-- @docs/ai/survival-mode-plan.md —— 新方案（待用户审核）：手引生存模式，手的位置控制走位，握拳操控回旋镖
-- docs/ai/guard-mode-plan.md —— 现有代码对应的方案：站桩守卫模式，将被上面的新方案取代
+- @docs/ai/survival-mode-plan.md —— 当前方案和进度：手引生存模式，手的位置控制走位，握拳操控回旋镖
+- docs/ai/guard-mode-plan.md —— 已被取代的站桩守卫方案，仅作历史记录
 - docs/ai/gesture-plan.md —— 已被取代的旧方案（MediaPipe），仅作历史记录
 
 约定：
