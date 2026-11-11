@@ -57,6 +57,7 @@ var _pressed: Dictionary = {}
 var _pending_release: Array[String] = []
 var _texture: ImageTexture
 var _pid: int = -1
+var _toast: Node
 
 
 func _ready() -> void:
@@ -69,7 +70,8 @@ func _ready() -> void:
 		_bound = true
 		_udp.set_dest_address(HOST, SEND_PORT)
 	add_child(PANEL_SCENE.instantiate())
-	add_child(TOAST_SCENE.instantiate())
+	_toast = TOAST_SCENE.instantiate()
+	add_child(_toast)
 	if autostart and _bound and not OS.get_cmdline_user_args().has(NO_AUTOSTART_ARG):
 		_start_recognizer()
 
@@ -236,6 +238,12 @@ func cycle_roi() -> void:
 ## 开始 / 停止录像（识别端把镜像后的画面存到 gesture/recordings/）
 func toggle_record() -> void:
 	_send_cmd({"cmd": "record"})
+
+
+## 提示框显示一条临时消息（识别端未连接 / 未标定 / 没有手时不会盖过这些状态）
+func flash_toast(text: String, seconds: float = 1.0) -> void:
+	if _toast:
+		_toast.flash_message(text, seconds)
 
 
 func set_stage(n: int) -> void:

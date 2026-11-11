@@ -11,9 +11,24 @@ const CENTER := Vector2( 256, 144 )
 ## 主角碰撞圆半径 10，墙在地板边缘，所以这个范围不会撞墙。
 const ARENA_RECT := Rect2( 28, 44, 456, 200 )
 
-## 操作框里映射到 ARENA_RECT 的区域（0-1 归一化，中间 80%）
-const HAND_MIN := 0.1
-const HAND_MAX := 0.9
+## 手的活动区域（操作框归一化 0-1）映射到光标可达矩形 CURSOR_RECT。
+## 以下数字按默认操作框 right（250x420 摄像头像素）推出，目标是横纵增益一致、约 1.5 游戏像素 / 摄像头像素：
+## 横向 0.05-0.95 = 225 像素 -> 338 游戏像素；纵向 0.34-0.66 = 约 134 像素 -> 200 游戏像素。
+## 换了操作框尺寸（预设 right-wide 等）要重算。协议里没有操作框的像素尺寸，所以用归一化常量。
+const HAND_X_MIN : float = 0.05
+const HAND_X_MAX : float = 0.95
+const HAND_Y_MIN : float = 0.34
+const HAND_Y_MAX : float = 0.66
+## 光标可达矩形：纵向铺满 ARENA_RECT，横向在 ARENA_RECT 内居中（两侧各约 59 像素够不到）
+const CURSOR_RECT := Rect2( 87, 44, 338, 200 )
+## 手势模式下光标每秒最多移动的像素数
+const CURSOR_MAX_SPEED : float = 400.0
+## 手势模式主角走速 = clamp( 离光标距离 * WALK_SPEED_GAIN, WALK_SPEED_MIN, WALK_SPEED_MAX )
+const WALK_SPEED_GAIN : float = 8.0
+const WALK_SPEED_MIN : float = 60.0
+const WALK_SPEED_MAX : float = 200.0
+## 头顶念力条的最小 y（世界坐标），保证不超出镜头上沿
+const PSI_BAR_MIN_Y : float = 12.0
 ## 离光标多远开始走 / 停下（滞回）
 const WALK_START_DIST : float = 10.0
 const WALK_STOP_DIST : float = 4.0
@@ -51,6 +66,7 @@ var guided : bool = false
 var _player : Player
 var _abilities : PlayerAbilities
 var _cursor : HandCursor
+var _psi_bar : PsiBar
 var _boomerang : Boomerang
 var _hud : SurvivalHud
 var _hand_lost_time : float = 0.0
@@ -60,6 +76,8 @@ var _attack_cd : float = 0.0
 var _prev_fist : bool = false
 var _guided_by_hand : bool = false
 var _guided_time : float = 0.0
+## 上一帧是否在手势模式且有手（用来判断光标是否要直接跳到目标点）
+var _had_hand : bool = false
 
 
 func _ready() -> void:
@@ -69,6 +87,8 @@ func _ready() -> void:
 	_cursor = HandCursor.new()
 	# 父节点还在 _ready 里搭子节点，延后再挂光标
 	get_parent().add_child.call_deferred( _cursor )
+	_psi_bar = PsiBar.new()
+	get_parent().add_child.call_deferred( _psi_bar )
 
 
 ## 每局开始：念力回满，结束操控
@@ -95,8 +115,11 @@ func _process( delta : float ) -> void:
 	if _player.is_dead:
 		_end_guided()
 		_player.use_move_override = false
+		_player.move_speed_override = 0.0
 		if is_instance_valid( _cursor ):
 			_cursor.visible = false
+		if is_instance_valid( _psi_bar ):
+			_psi_bar.hide_now()
 		return
 
 	# 回旋镖被外部销毁时，操控也结束
@@ -104,8 +127,15 @@ func _process( delta : float ) -> void:
 		_end_guided()
 
 	var fist := hand_mode and GestureInput.is_fist and GestureInput.hand_present
-	if hand_mode and GestureInput.hand_present:
-		_cursor_pos = _hand_to_arena( GestureInput.hand_pos )
+	var hand_now := hand_mode and GestureInput.hand_present
+	if hand_now:
+		var goal := _hand_to_arena( GestureInput.hand_pos )
+		# 手刚出现的第一帧直接跳过去，之后限速追
+		if _had_hand:
+			_cursor_pos = _cursor_pos.move_toward( goal, CURSOR_MAX_SPEED * delta )
+		else:
+			_cursor_pos = goal
+	_had_hand = hand_now
 
 	# 开始 / 结束操控
 	if not guided:
@@ -114,8 +144,11 @@ func _process( delta : float ) -> void:
 			want_start = fist and not _prev_fist
 		else:
 			want_start = Input.is_action_just_pressed( "ability" )
-		if want_start and psi >= PSI_START_MIN and not _abilities.has_boomerang():
-			_start_guided( hand_mode )
+		if want_start and not _abilities.has_boomerang():
+			if psi >= PSI_START_MIN:
+				_start_guided( hand_mode )
+			else:
+				_psi_low_feedback()
 	else:
 		var stop := false
 		if _guided_by_hand:
@@ -158,11 +191,13 @@ func _update_hand_state( delta : float ) -> bool:
 func _update_walk( hand_mode : bool ) -> void:
 	if not hand_mode:
 		_player.use_move_override = false
+		_player.move_speed_override = 0.0
 		_walking = false
 		return
 	_player.use_move_override = true
 	if guided:
 		_player.move_override = Vector2.ZERO
+		_player.move_speed_override = 0.0
 		_walking = false
 		return
 	var to_cursor := _cursor_pos - _player.global_position
@@ -172,13 +207,14 @@ func _update_walk( hand_mode : bool ) -> void:
 	else:
 		_walking = d > WALK_START_DIST
 	_player.move_override = to_cursor / d if _walking and d > 0.001 else Vector2.ZERO
+	_player.move_speed_override = clampf( d * WALK_SPEED_GAIN, WALK_SPEED_MIN, WALK_SPEED_MAX ) if _walking else 0.0
 
 
-## 操作框归一化坐标 -> 房间里的光标位置（中间 80% 线性映射到整个矩形并钳制）
+## 操作框归一化坐标 -> 房间里的光标目标点（手活动区域线性映射到 CURSOR_RECT 并钳制）
 func _hand_to_arena( p : Vector2 ) -> Vector2:
-	var u := clampf( (p.x - HAND_MIN) / (HAND_MAX - HAND_MIN), 0.0, 1.0 )
-	var v := clampf( (p.y - HAND_MIN) / (HAND_MAX - HAND_MIN), 0.0, 1.0 )
-	return ARENA_RECT.position + Vector2( u, v ) * ARENA_RECT.size
+	var u := clampf( (p.x - HAND_X_MIN) / (HAND_X_MAX - HAND_X_MIN), 0.0, 1.0 )
+	var v := clampf( (p.y - HAND_Y_MIN) / (HAND_Y_MAX - HAND_Y_MIN), 0.0, 1.0 )
+	return CURSOR_RECT.position + Vector2( u, v ) * CURSOR_RECT.size
 
 
 # ---------- 回旋镖 ----------
@@ -304,11 +340,27 @@ func _shutdown_control() -> void:
 	_player.can_move = true
 	_player.use_move_override = false
 	_player.move_override = Vector2.ZERO
+	_player.move_speed_override = 0.0
 	_walking = false
+	_had_hand = false
 	if is_instance_valid( _cursor ):
 		_cursor.visible = false
+	if is_instance_valid( _psi_bar ):
+		_psi_bar.hide_now()
 
 
+## 头顶念力条：操控中或还没回满时显示
 func _update_hud() -> void:
-	if is_instance_valid( _hud ):
-		_hud.set_psi( psi )
+	if is_instance_valid( _psi_bar ) and _psi_bar.is_inside_tree():
+		var bar_pos := _player.global_position + PsiBar.OFFSET
+		# 镜头可见范围的上沿是 y=9：主角贴着上墙时别让念力条跑出画面
+		bar_pos.y = maxf( bar_pos.y, PSI_BAR_MIN_Y )
+		_psi_bar.global_position = bar_pos
+		_psi_bar.update_state( psi, guided or psi < 1.0 )
+
+
+## 念力不足起飞失败：念力条闪烁，提示框显示 PSI LOW
+func _psi_low_feedback() -> void:
+	if is_instance_valid( _psi_bar ):
+		_psi_bar.flash()
+	GestureInput.flash_toast( "PSI LOW", 1.0 )

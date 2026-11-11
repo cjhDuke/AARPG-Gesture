@@ -22,6 +22,9 @@ var _bg: ColorRect
 var _label: Label
 var _text := ""
 var _tween: Tween
+## 临时消息（如 PSI LOW）：文字和到期时间（毫秒）
+var _flash_text := ""
+var _flash_until_msec := 0
 
 
 func _ready() -> void:
@@ -43,6 +46,12 @@ func _ready() -> void:
 	_ignore(_label)
 	_root.add_child(_label)
 	_root.modulate.a = 0.0
+
+
+## 临时消息：盖过 OPEN / FIST 提示，但不盖过 CAMERA OFFLINE / 扫描 / 未采背景 / NO HAND
+func flash_message(text: String, seconds: float) -> void:
+	_flash_text = text
+	_flash_until_msec = Time.get_ticks_msec() + int(seconds * 1000.0)
 
 
 func _ignore(c: Control) -> void:
@@ -69,6 +78,8 @@ func _current_info() -> Array:
 		return ["HAND OUT, PRESS F3", COL_WARN, true]
 	if not _gi.hand_present:
 		return ["NO HAND", COL_WARN, true]
+	if Time.get_ticks_msec() < _flash_until_msec:
+		return [_flash_text, COL_WARN, false]
 	var paused := get_tree().paused
 	if _gi.is_fist:
 		return ["FIST - CONFIRM" if paused else "FIST - BOOMERANG", COL_FIST, true]

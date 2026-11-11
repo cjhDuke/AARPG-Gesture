@@ -19,7 +19,8 @@ func process(_delta : float) -> State:
 	if player.direction == Vector2.ZERO:
 		return idle
 		
-	player.velocity = player.direction*move_speed
+	var speed := player.move_speed_override if player.move_speed_override > 0.0 else move_speed
+	player.velocity = player.direction * speed
 	
 	if player.set_direction():
 		player.update_animation("walk")

@@ -12,6 +12,8 @@ var can_move : bool = true
 ## 为 true 时移动方向取 move_override（已归一化或零），不读键盘；由关卡控制器（手势）使用
 var use_move_override := false
 var move_override := Vector2.ZERO
+## 大于 0 时 State_Walk 用它当走速（手势模式变速）；<=0 用状态自带的速度
+var move_speed_override : float = 0.0
 
 @onready var animation_player: AnimationPlayer = $AnimationPlayer
 @onready var sprite_2d: Sprite2D = $Sprite2D
