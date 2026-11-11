@@ -20,8 +20,10 @@ var _trail : Line2D
 @export var max_speed : float = 400.0
 @export var catch_audio : AudioStream
 ## 受控飞行：最大速度、加速度（像素/秒、像素/秒²）
-@export var guided_max_speed : float = 260.0
-@export var guided_accel : float = 1400.0
+@export var guided_max_speed : float = 340.0
+@export var guided_accel : float = 2600.0
+## 追目标的"弹簧"增益：期望速度 = min( guided_max_speed, 离目标距离 * guided_gain )，越大越跟手
+@export var guided_gain : float = 10.0
 
 @onready var animation_player: AnimationPlayer = $AnimationPlayer
 @onready var audio: AudioStreamPlayer2D = $AudioStreamPlayer2D
@@ -45,7 +47,7 @@ func _physics_process(delta: float) -> void:
 		var dist := to_target.length()
 		var desired := Vector2.ZERO
 		if dist > 0.01:
-			desired = to_target / dist * minf( guided_max_speed, dist * 8.0 )
+			desired = to_target / dist * minf( guided_max_speed, dist * guided_gain )
 		velocity = velocity.move_toward( desired, guided_accel * delta )
 		global_position += velocity * delta
 		speed = velocity.length()
@@ -100,6 +102,18 @@ func release() -> void:
 		return
 	speed = maxf( velocity.length(), 120.0 )
 	state = State.RETURN
+
+
+## 重新抓住：返回途中切回受控状态，保持当前飞行方向和速度（上限 guided_max_speed）。
+## 只在 RETURN 状态有效，返回是否成功
+func regrab() -> bool:
+	if state != State.RETURN:
+		return false
+	velocity = direction * minf( speed, guided_max_speed )
+	speed = velocity.length()
+	_target = global_position
+	state = State.GUIDED
+	return true
 
 
 func _make_trail() -> void:

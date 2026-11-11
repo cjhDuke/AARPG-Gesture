@@ -33,3 +33,10 @@ func start_guided( dir: Vector2 ) -> Boomerang:
 func release_guided() -> void:
 	if has_boomerang():
 		boomerang_instance.release()
+
+
+## 重新抓住正在返回的回旋镖（场上有且处于返回状态才成功），成功返回该实例，否则 null
+func regrab_guided() -> Boomerang:
+	if has_boomerang() and boomerang_instance.regrab():
+		return boomerang_instance
+	return null

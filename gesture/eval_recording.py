@@ -79,12 +79,13 @@ def main():
     seg.set_background(bg)
 
     deb = GestureDebouncer(cfg)
-    ratios, raw, stable, palms = [], [], [], []
+    ratios, raw, stable, palms, edges = [], [], [], [], []
     for f in frames:
         ft = features.extract(seg.process(f).mask, cfg)
         ratios.append(ft.open_ratio if ft.palm else np.nan)
         raw.append(ft.gesture)
-        stable.append(deb.update(ft.gesture))
+        stable.append(deb.update(ft.gesture, ft.edge))
+        edges.append(ft.edge)
         palms.append(ft.palm or (np.nan, np.nan))
     ratios, raw, stable = np.array(ratios), np.array(raw), np.array(stable)
 
@@ -107,6 +108,7 @@ def main():
         print("%s %d 帧：张开度 1%%/50%%/99%% 分位 = %.2f / %.2f / %.2f；逐帧原始判定正确 %.1f%%，防抖后正确 %.1f%%"
               % (name, len(idx), *np.percentile(x, [1, 50, 99]),
                  100.0 * np.mean(raw[idx] == label), 100.0 * np.mean(stable[idx] == label)))
+    print("贴边帧数：%d / %d" % (sum(edges), len(edges)))
     changes = [i for i in range(1, len(stable)) if stable[i] != stable[i - 1]]
     print("稳定输出切换的帧号：", [(i, str(stable[i])) for i in changes])
     return 0

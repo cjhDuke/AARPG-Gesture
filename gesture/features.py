@@ -23,6 +23,7 @@ class HandFeatures:
     arm_dir: tuple = None          # 小臂方向的单位向量；没找到小臂时为 None
     open_ratio: float = 0.0
     bbox: tuple = None
+    edge: bool = False             # 掩膜贴到操作框左 / 右 / 上边界（形状被裁掉，不可信）
 
 
 def largest_contour(mask):
@@ -70,6 +71,33 @@ def classify(open_ratio, fcfg):
     return "between"
 
 
+def touches_edge(mask, fcfg, center=None, radius=0.0, arm=None):
+    """手本身（不是小臂）是否被操作框的左 / 右 / 上边界裁掉。
+
+    只数边界上"离掌心不超过 edge_reach 倍半径、且不在小臂那一侧"的掩膜像素：
+    小臂常常从右下角伸出画面，它贴着边界不代表手形被裁。下边界不算。
+    不给掌心时退化成数全部边界像素。
+    """
+    n = fcfg.get("edge_touch_pixels", 8)
+    h, w = mask.shape[:2]
+    ys_l = np.nonzero(mask[:, 0])[0]
+    ys_r = np.nonzero(mask[:, -1])[0]
+    xs_t = np.nonzero(mask[0, :])[0]
+    xs = np.concatenate([np.zeros(len(ys_l)), np.full(len(ys_r), w - 1.0), xs_t]).astype(np.float32)
+    ys = np.concatenate([ys_l, ys_r, np.zeros(len(xs_t))]).astype(np.float32)
+    if len(xs) == 0:
+        return False
+    if center is None or radius <= 0:
+        return len(xs) >= n
+    vx, vy = xs - center[0], ys - center[1]
+    dist = np.hypot(vx, vy)
+    ok = dist <= fcfg.get("edge_reach", 3.5) * radius
+    if arm is not None:
+        cos = (vx * arm[0] + vy * arm[1]) / np.maximum(dist, 1e-6)
+        ok &= cos < fcfg["arm_exclude_cos"]
+    return int(np.count_nonzero(ok)) >= n
+
+
 def extract(mask, cfg):
     """从掩膜提取全部特征并给出原始手势。"""
     fcfg = cfg["features"]
@@ -96,4 +124,5 @@ def extract(mask, cfg):
     ratio = float(dist[j]) / radius
     return HandFeatures(classify(ratio, fcfg), contour, cv2.convexHull(contour),
                         (float(center[0]), float(center[1])), radius,
-                        (int(pts[j][0]), int(pts[j][1])), arm, ratio, cv2.boundingRect(contour))
+                        (int(pts[j][0]), int(pts[j][1])), arm, ratio, cv2.boundingRect(contour),
+                        touches_edge(mask, fcfg, center, radius, arm))

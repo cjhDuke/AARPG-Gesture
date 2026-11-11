@@ -1,6 +1,8 @@
 extends Node2D
 
 const START_LEVEL: String = "res://levels/survival/survival_arena.tscn"
+## 回旋镖练习场：主角站定、只练放回旋镖，调参用
+const PRACTICE_LEVEL: String = "res://levels/boomerang_test/boomerang_test.tscn"
 ## 标题背景的镜头位置（主角被隐藏，只借用它身上的 Camera2D）。
 ## x 取房间中心，y 比中心靠上，让顶部露出一截墙，看得出是个房间
 const CAMERA_POS := Vector2(256, 112)
@@ -22,6 +24,7 @@ const MENU_SLIDE_TIME := 0.4
 @onready var orbit_boomerang: TitleBoomerang = $CanvasLayer/Control/OrbitBoomerang
 @onready var menu: VBoxContainer = $CanvasLayer/Control/Menu
 @onready var button_start: Button = $CanvasLayer/Control/Menu/Button_start
+@onready var button_practice: Button = $CanvasLayer/Control/Menu/Button_practice
 @onready var button_quit: Button = $CanvasLayer/Control/Menu/Button_quit
 @onready var marker: TitleBoomerang = $CanvasLayer/Control/Menu/Marker
 @onready var audio_stream_player: AudioStreamPlayer = $AudioStreamPlayer
@@ -58,25 +61,22 @@ func setup_title_screen() -> void:
 	title_ui.visible = true
 
 	AudioManager.play_music(music)
-	button_start.pressed.connect(start_game)
+	button_start.pressed.connect(start_game.bind(START_LEVEL))
+	button_practice.pressed.connect(start_game.bind(PRACTICE_LEVEL))
 	button_quit.pressed.connect(quit_game)
 
-	# 竖排菜单：上下循环，左右也能在两个按钮间切换
-	var start_path := button_start.get_path()
-	var quit_path := button_quit.get_path()
-	button_start.focus_neighbor_top = quit_path
-	button_start.focus_neighbor_bottom = quit_path
-	button_start.focus_neighbor_left = quit_path
-	button_start.focus_neighbor_right = quit_path
-	button_quit.focus_neighbor_top = start_path
-	button_quit.focus_neighbor_bottom = start_path
-	button_quit.focus_neighbor_left = start_path
-	button_quit.focus_neighbor_right = start_path
-
-	button_start.focus_entered.connect(play_audio.bind(button_focus_audio))
-	button_quit.focus_entered.connect(play_audio.bind(button_focus_audio))
-	button_start.focus_entered.connect(_move_marker.bind(button_start))
-	button_quit.focus_entered.connect(_move_marker.bind(button_quit))
+	# 竖排菜单：上下循环，左右也能在按钮间切换
+	var buttons: Array[Button] = [button_start, button_practice, button_quit]
+	for i in buttons.size():
+		var button := buttons[i]
+		var prev_path := buttons[(i + buttons.size() - 1) % buttons.size()].get_path()
+		var next_path := buttons[(i + 1) % buttons.size()].get_path()
+		button.focus_neighbor_top = prev_path
+		button.focus_neighbor_left = prev_path
+		button.focus_neighbor_bottom = next_path
+		button.focus_neighbor_right = next_path
+		button.focus_entered.connect(play_audio.bind(button_focus_audio))
+		button.focus_entered.connect(_move_marker.bind(button))
 
 	# 标题入场：字母逐个落下，每落一个响一声；全部落定后淡入副标题和回旋镖，按钮滑入
 	logo.letter_landed.connect(func(_i: int) -> void: play_audio(button_focus_audio))
@@ -125,7 +125,7 @@ func _move_marker(button: Button) -> void:
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 
-func start_game() -> void:
+func start_game(level_path: String) -> void:
 	if _starting:
 		return
 	_starting = true
@@ -137,7 +137,7 @@ func start_game() -> void:
 	_marker_tween.tween_property(marker, "position:x", marker.position.x + MARKER_FLY_DISTANCE, MARKER_FLY_TIME) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	await _marker_tween.finished
-	LevelManager.load_new_level(START_LEVEL)
+	LevelManager.load_new_level(level_path)
 
 
 func quit_game() -> void:

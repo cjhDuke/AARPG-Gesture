@@ -54,11 +54,14 @@
     "arm_min_area": 0.15,
     "arm_min_reach": 1.8,
     "arm_min_down": -0.3,
-    "arm_exclude_cos": 0.3
+    "arm_exclude_cos": 0.3,
+    "edge_touch_pixels": 8,
+    "edge_reach": 3.5
   },
   "tracker": {
     "debounce_frames": 3,
-    "fist_release_frames": 3,
+    "fist_release_frames": 5,
+    "fist_release_frames_edge": 12,
     "smooth_alpha": 0.5,
     "dead_zone": 0.008,
     "zone_inner": 0.10,

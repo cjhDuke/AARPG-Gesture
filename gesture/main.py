@@ -174,7 +174,7 @@ def run():
                 recorder.update_meta(roi_idx, segmenter.bg)
             was_calibrated = segmenter.calibrated
             feats = features.extract(seg.mask, cfg)
-            gesture = debouncer.update(feats.gesture)
+            gesture = debouncer.update(feats.gesture, feats.edge)
             w, h = rect[2], rect[3]
             if feats.palm:
                 cx, cy = feats.palm
@@ -199,7 +199,7 @@ def run():
             state = {"seq": seq, "t_ms": round(t_ms, 1), "hand": feats.palm is not None,
                      "gesture": gesture, "zone": zone, "cx": round(ncx, 3), "cy": round(ncy, 3),
                      "px": round(px, 3), "py": round(py, 3),
-                     "open_ratio": round(feats.open_ratio, 2), "radius": round(feats.radius / w, 3),
+                     "open_ratio": round(feats.open_ratio, 2), "edge": bool(feats.edge), "radius": round(feats.radius / w, 3),
                      "fps": round(fps, 1), "proc_ms": round(proc_ms, 2),
                      "calibrated": segmenter.calibrated, "calibrating": segmenter.calibrating}
             net.send_state(state)

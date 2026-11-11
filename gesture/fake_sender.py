@@ -120,7 +120,7 @@ def main():
         st = {"seq": seq, "t_ms": now * 1000, "hand": hand, "gesture": gesture,
               "zone": zone_of(x, y) if hand else "center",
               "cx": round(x, 4), "cy": round(y, 4), "px": round(x, 4), "py": round(y, 4),
-              "open_ratio": OPEN_RATIO[gesture], "radius": 0.12 if hand else 0.0,
+              "open_ratio": OPEN_RATIO[gesture], "edge": False, "radius": 0.12 if hand else 0.0,
               "fps": 30.0, "proc_ms": 5.0,
               "calibrated": calibrated, "calibrating": False}
         out.sendto(b"S" + json.dumps(st).encode("utf-8"), SEND_ADDR)

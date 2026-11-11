@@ -1,8 +1,8 @@
 extends Node
 ## 手势输入接收端（autoload: GestureInput）
 ## 通过本机 UDP 接收 Python 识别端的状态包和画面包。
-## 游戏进行中只对外提供状态（hand_pos / is_fist 等），由关卡控制器使用；
-## 游戏暂停（菜单）时按 docs/ai/gesture-protocol.md 的边沿规则注入 ui_* 动作。
+## 只对外提供状态（hand_pos / is_fist 等），由关卡控制器在游戏中使用；
+## 不向 Godot 注入任何输入动作，菜单（标题、暂停、结算）只用键盘 / 手柄操作。
 
 ## 握拳 / 张开切换时发出
 signal fist_changed(is_fist: bool)
@@ -19,10 +19,6 @@ const PANEL_SCENE := preload("res://ui/gesture_panel/gesture_panel.tscn")
 const TOAST_SCENE := preload("res://ui/gesture_toast/gesture_toast.tscn")
 ## 命令行用户参数（`-- --no-gesture-autostart`）：不拉起识别进程，用于配合 fake_sender 测试
 const NO_AUTOSTART_ARG := "--no-gesture-autostart"
-
-const DIR_ACTION := {
-	"up": "ui_up", "down": "ui_down", "left": "ui_left", "right": "ui_right"
-}
 
 ## 是否在游戏启动时自动拉起识别进程
 @export var autostart: bool = true
@@ -49,12 +45,6 @@ var _bound := false
 var _last_seq: int = -1
 var _last_rx_msec: int = 0
 var _last_ping_msec: int = 0
-var _prev_zone: String = "center"
-var _prev_gesture: String = "none"
-## 当前由手势按下的动作 -> true
-var _pressed: Dictionary = {}
-## 下一帧要松开的动作
-var _pending_release: Array[String] = []
 var _texture: ImageTexture
 var _pid: int = -1
 var _toast: Node
@@ -79,11 +69,6 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if not _bound:
 		return
-	# 先松开上一帧排队的动作
-	for a in _pending_release:
-		_release(a)
-	_pending_release.clear()
-
 	# 读完缓冲区：状态包只留 seq 最新的，画面包只留最后一个
 	var newest_state: Dictionary = {}
 	var newest_seq := _last_seq
@@ -123,30 +108,16 @@ func _on_state(st: Dictionary) -> void:
 	_last_rx_msec = now
 	latency_ms = float(st.get("proc_ms", 0.0))
 	if not connected:
-		# 重新连上时从干净的状态开始比较边沿
-		_prev_zone = "center"
-		_prev_gesture = "none"
 		_set_connected(true)
 
 	var gesture := str(st.get("gesture", "none"))
-	var zone := str(st.get("zone", "center"))
-	var paused := get_tree().paused
 
-	# 对外状态
+	# 对外状态（识别端发的 zone 字段只给菜单用过，现在忽略）
 	hand_present = bool(st.get("hand", false))
 	hand_pos = Vector2(float(st.get("px", 0.5)), float(st.get("py", 0.5)))
 	calibrated = bool(st.get("calibrated", false))
 	calibrating = bool(st.get("calibrating", false))
 	_set_fist(gesture == "fist")
-
-	# 菜单：只在游戏暂停时注入 ui_* 动作
-	if paused:
-		if zone != _prev_zone and DIR_ACTION.has(zone):
-			_pulse(DIR_ACTION[zone])
-		if gesture != _prev_gesture and gesture == "fist":
-			_pulse("ui_accept")
-	_prev_zone = zone
-	_prev_gesture = gesture
 	last_state = st
 	state_updated.emit(st)
 
@@ -174,49 +145,14 @@ func _set_connected(v: bool) -> void:
 		return
 	connected = v
 	if not v:
-		_release_all()
 		last_state = {}
 		hand_present = false
 		hand_pos = Vector2(0.5, 0.5)
 		calibrated = false
 		calibrating = false
 		_set_fist(false)
-		_prev_zone = "center"
-		_prev_gesture = "none"
 		packet_interval_ms = 0.0
 	connection_changed.emit(v)
-
-
-# ---------- 输入注入 ----------
-
-func _press(action: String) -> void:
-	var ev := InputEventAction.new()
-	ev.action = action
-	ev.pressed = true
-	Input.parse_input_event(ev)
-	_pressed[action] = true
-
-
-func _release(action: String) -> void:
-	if not _pressed.has(action):
-		return
-	var ev := InputEventAction.new()
-	ev.action = action
-	ev.pressed = false
-	Input.parse_input_event(ev)
-	_pressed.erase(action)
-
-
-## 按下，下一帧松开
-func _pulse(action: String) -> void:
-	_press(action)
-	_pending_release.append(action)
-
-
-func _release_all() -> void:
-	for a in _pressed.keys():
-		_release(a)
-	_pending_release.clear()
 
 
 # ---------- 命令 ----------
@@ -283,7 +219,6 @@ func _start_recognizer() -> void:
 
 
 func _stop_recognizer() -> void:
-	_release_all()
 	if _pid > 0:
 		_send_cmd({"cmd": "quit"})
 		OS.kill(_pid)

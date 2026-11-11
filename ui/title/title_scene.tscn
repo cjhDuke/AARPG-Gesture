@@ -85,19 +85,24 @@ anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
 offset_left = -60.0
-offset_top = 142.0
+offset_top = 120.0
 offset_right = 60.0
-offset_bottom = 202.0
+offset_bottom = 204.0
 grow_horizontal = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 6
 
 [node name="Button_start" type="Button" parent="CanvasLayer/Control/Menu"]
-custom_minimum_size = Vector2(0, 26)
+custom_minimum_size = Vector2(0, 24)
 layout_mode = 2
 text = "START"
 
+[node name="Button_practice" type="Button" parent="CanvasLayer/Control/Menu"]
+custom_minimum_size = Vector2(0, 24)
+layout_mode = 2
+text = "PRACTICE"
+
 [node name="Button_quit" type="Button" parent="CanvasLayer/Control/Menu"]
-custom_minimum_size = Vector2(0, 26)
+custom_minimum_size = Vector2(0, 24)
 layout_mode = 2
 text = "QUIT"
 
@@ -118,7 +123,7 @@ offset_right = 240.0
 offset_bottom = -26.0
 grow_horizontal = 2
 grow_vertical = 0
-text = "OPEN HAND: MOVE / SELECT    FIST: BOOMERANG / CONFIRM"
+text = "ARROWS: SELECT   ENTER: CONFIRM"
 horizontal_alignment = 1
 
 [node name="HintLabel2" type="Label" parent="CanvasLayer/Control"]
@@ -135,7 +140,7 @@ offset_right = 240.0
 offset_bottom = -4.0
 grow_horizontal = 2
 grow_vertical = 0
-text = "F3 RESCAN   F4 BOX   KEYBOARD: ARROWS / J / L"
+text = "IN GAME  OPEN: MOVE  FIST: BOOMERANG  F3 RESCAN  F4 BOX"
 horizontal_alignment = 1
 
 [node name="SplashScreen" parent="CanvasLayer" unique_id=678264783 instance=ExtResource("8_lj5tl")]

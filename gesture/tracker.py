@@ -4,6 +4,10 @@
 class GestureDebouncer:
     """新手势需连续 N 帧才切换；从 fist 切走需要更多帧（防握拳中途抖动）。
 
+    手贴着操作框边界（edge=True，手形被裁掉）时，从 fist 切走需要的帧数更多
+    （fist_release_frames_edge）：手伸远了被裁成别的形状时不至于马上"脱手"，
+    但真的张开并保持一会儿仍然能松开。握拳的判定不受贴边影响。
+
     原始判定为 "between"（张开度落在两个阈值之间）时保持当前状态，这就是双阈值滞回；
     当前没有手时，between 先按张开处理。
     """
@@ -11,11 +15,12 @@ class GestureDebouncer:
     def __init__(self, cfg):
         self.n = cfg["tracker"]["debounce_frames"]
         self.n_fist = cfg["tracker"]["fist_release_frames"]
+        self.n_fist_edge = cfg["tracker"].get("fist_release_frames_edge", self.n_fist)
         self.stable = "none"
         self._cand = None
         self._count = 0
 
-    def update(self, raw):
+    def update(self, raw, edge=False):
         if raw == "between":
             raw = "palm" if self.stable == "none" else self.stable
         if raw == self.stable:
@@ -25,7 +30,10 @@ class GestureDebouncer:
             self._count += 1
         else:
             self._cand, self._count = raw, 1
-        need = self.n_fist if self.stable == "fist" else self.n
+        if self.stable == "fist":
+            need = self.n_fist_edge if edge else self.n_fist
+        else:
+            need = self.n
         if self._count >= need:
             self.stable = raw
             self._cand, self._count = None, 0

@@ -24,21 +24,11 @@ const HAND_Y_MIN : float = 0.25
 const HAND_Y_MAX : float = 0.80
 ## 光标可达矩形：纵向铺满 ARENA_RECT，横向在 ARENA_RECT 内居中（两侧各约 59 像素够不到）
 const CURSOR_RECT := Rect2( 87, 44, 338, 200 )
-## 手势模式下光标每秒最多移动的像素数
-const CURSOR_MAX_SPEED : float = 240.0
-## 光标朝手的位置做指数平滑的时间常数（秒），越大越"肉"
-const CURSOR_SMOOTH_TIME : float = 0.12
-## 手势模式主角走速 = clamp( 离光标距离 * WALK_SPEED_GAIN, WALK_SPEED_MIN, WALK_SPEED_MAX )
-const WALK_SPEED_GAIN : float = 5.0
-const WALK_SPEED_MIN : float = 40.0
-const WALK_SPEED_MAX : float = 130.0
 ## 头顶念力条的最小 y（世界坐标），保证不超出镜头上沿
 const PSI_BAR_MIN_Y : float = 12.0
 ## 离光标多远开始走 / 停下（滞回）
 const WALK_START_DIST : float = 10.0
 const WALK_STOP_DIST : float = 4.0
-## 手丢失后保持原状态的宽限（秒）
-const HAND_GRACE : float = 0.3
 
 ## 自动挥剑：敌人（原点）到主角（原点）的距离小于它就挥剑。
 ## 依据：AttackHitBox 圆半径 20、敌人受击圆在其原点上方 7 像素；
@@ -46,15 +36,46 @@ const HAND_GRACE : float = 0.3
 const ATTACK_RANGE : float = 36.0
 const ATTACK_COOLDOWN : float = 0.45
 
-## 念力
+## 念力：不低于它才能起飞 / 重新抓住
 const PSI_START_MIN : float = 0.3
-const PSI_DRAIN : float = 1.0 / 3.0
-const PSI_REGEN : float = 1.0 / 4.0
-## 起飞后这段时间内目标点固定在主角朝向前方，不追光标（握拳瞬间掌心会跳）
+## 起飞后这段时间内目标点固定不动，不追光标（握拳瞬间掌心会跳）：
+## 手势模式固定在握拳那一刻的光标位置；键盘模式固定在主角朝向前方 LAUNCH_FIXED_DIST 像素
 const LAUNCH_FIXED_TIME : float = 0.15
 const LAUNCH_FIXED_DIST : float = 70.0
+## 光标离主角不到这么远时，起飞方向用主角朝向
+const LAUNCH_AIM_MIN_DIST : float = 8.0
 ## 键盘模式：目标点 = 回旋镖当前位置 + 方向键方向 * KEY_STEP
 const KEY_STEP : float = 80.0
+
+## 操控状态变化时发出的简短英文事件（LAUNCH / REGRAB / RELEASE: ... / BLOCKED: ...），
+## 给测试场景的事件日志用
+signal control_event( text : String )
+
+## ---------- 调参（普通变量，测试场景运行时会改它们） ----------
+## 走位时光标每秒最多移动的像素数
+var cursor_max_speed : float = 300.0
+## 走位时光标朝手的位置做指数平滑的时间常数（秒），越大越"肉"
+var cursor_smooth_time : float = 0.06
+## 操控回旋镖时的光标限速 / 平滑（要更跟手，所以比走位时快）
+var guided_cursor_max_speed : float = 420.0
+var guided_cursor_smooth_time : float = 0.05
+## 手势模式主角走速 = clamp( 离光标距离 * walk_speed_gain, walk_speed_min, walk_speed_max )
+var walk_speed_gain : float = 7.0
+var walk_speed_min : float = 40.0
+var walk_speed_max : float = 130.0
+## 手丢失后保持原状态的宽限（秒）；操控回旋镖时用 guided_hand_grace，回旋镖停在最后的目标点等待
+var hand_grace : float = 0.3
+var guided_hand_grace : float = 0.6
+## 念力每秒消耗 / 回复（0-1 为满）
+var psi_drain : float = 1.0 / 3.0
+var psi_regen : float = 1.0 / 4.0
+
+## ---------- 开关（默认是正常游戏的行为；测试场景会改） ----------
+## false 时主角不走位，始终站定
+var walk_enabled : bool = true
+var auto_attack_enabled : bool = true
+## true 时念力不消耗、始终满
+var psi_infinite : bool = false
 
 ## 为 false 时不响应任何操作（例如结算面板显示期间）
 var enabled : bool = true :
@@ -67,6 +88,10 @@ var enabled : bool = true :
 var psi : float = 1.0
 ## 正在操控回旋镖
 var guided : bool = false
+## 光标在世界坐标里的位置（只读，给测试场景的调试面板用）
+var cursor_pos : Vector2 :
+	get:
+		return _cursor_pos
 
 var _player : Player
 var _abilities : PlayerAbilities
@@ -78,7 +103,11 @@ var _hand_lost_time : float = 0.0
 var _cursor_pos : Vector2 = CENTER
 var _walking : bool = false
 var _attack_cd : float = 0.0
-var _prev_fist : bool = false
+var _prev_hold : bool = false
+## 念力耗尽收回之后，必须先张开（或松开按键）一次才能再起飞，防止握着拳立刻又飞出去
+var _need_open : bool = false
+## 手势起飞时握拳那一刻的光标位置（起飞后前 LAUNCH_FIXED_TIME 秒的目标）
+var _launch_cursor : Vector2 = CENTER
 var _guided_by_hand : bool = false
 var _guided_time : float = 0.0
 ## 上一帧是否在手势模式且有手（用来判断光标是否要直接跳到目标点）
@@ -101,7 +130,8 @@ func reset() -> void:
 	_shutdown_control()
 	psi = 1.0
 	_attack_cd = 0.0
-	_prev_fist = false
+	_prev_hold = false
+	_need_open = false
 	_update_hud()
 
 
@@ -127,58 +157,58 @@ func _process( delta : float ) -> void:
 			_psi_bar.hide_now()
 		return
 
-	# 回旋镖被外部销毁时，操控也结束
+	# 回旋镖被外部销毁时，操控也结束（并要求先张开，免得下一帧又飞出去）
 	if guided and not _abilities.has_boomerang():
 		_end_guided()
+		_need_open = true
 
 	var fist := hand_mode and GestureInput.is_fist and GestureInput.hand_present
 	var hand_now := hand_mode and GestureInput.hand_present
 	if hand_now:
 		var goal := _hand_to_arena( GestureInput.hand_pos )
-		# 手刚出现的第一帧直接跳过去，之后先平滑再限速
+		# 手刚出现的第一帧直接跳过去，之后先平滑再限速（操控回旋镖时用更跟手的一组参数）
 		if _had_hand:
-			var smoothed := _cursor_pos.lerp( goal, 1.0 - exp( -delta / CURSOR_SMOOTH_TIME ) )
-			_cursor_pos = _cursor_pos.move_toward( smoothed, CURSOR_MAX_SPEED * delta )
+			var smooth_t := guided_cursor_smooth_time if guided else cursor_smooth_time
+			var max_v := guided_cursor_max_speed if guided else cursor_max_speed
+			var smoothed := _cursor_pos.lerp( goal, 1.0 - exp( -delta / smooth_t ) )
+			_cursor_pos = _cursor_pos.move_toward( smoothed, max_v * delta )
 		else:
 			_cursor_pos = goal
 	_had_hand = hand_now
 
-	# 开始 / 结束操控
+	# "想操控"：手势 = 握着拳；键盘 = 按住 ability。电平触发，只有上升沿才发反馈事件
+	var hold := fist if hand_mode else Input.is_action_pressed( "ability" )
+	var rise := hold and not _prev_hold
+	_prev_hold = hold
+	# 张开 / 松开键之后才解除"需要先张开"的锁
+	if _need_open:
+		var opened := (hand_now and not fist) if hand_mode else not hold
+		if opened:
+			_need_open = false
+
 	if not guided:
-		var want_start := false
-		if hand_mode:
-			want_start = fist and not _prev_fist
-		else:
-			want_start = Input.is_action_just_pressed( "ability" )
-		if want_start and not _abilities.has_boomerang():
-			if psi >= PSI_START_MIN:
-				_start_guided( hand_mode )
-			else:
-				_psi_low_feedback()
+		if hold:
+			_try_start( hand_mode, rise )
 	else:
-		var stop := false
-		if _guided_by_hand:
-			# 手张开（有手但不是拳），或手丢失超过宽限 / 断连（hand_mode 变假）
-			stop = not hand_mode or (GestureInput.hand_present and not GestureInput.is_fist)
-		else:
-			stop = hand_mode or not Input.is_action_pressed( "ability" )
-		if stop:
-			_end_guided()
-	_prev_fist = fist
+		_check_release( hand_mode )
 
 	# 念力：操控中消耗，否则恢复
-	if guided:
-		psi = maxf( psi - PSI_DRAIN * delta, 0.0 )
+	if psi_infinite:
+		psi = 1.0
+	elif guided:
+		psi = maxf( psi - psi_drain * delta, 0.0 )
 		if psi <= 0.0:
-			_end_guided()
+			_need_open = true
+			_end_guided( "RELEASE: PSI EMPTY" )
 	else:
-		psi = minf( psi + PSI_REGEN * delta, 1.0 )
+		psi = minf( psi + psi_regen * delta, 1.0 )
 
 	if guided:
 		_update_guided( delta, hand_mode )
 	_update_walk( hand_mode )
 	_update_cursor( hand_mode )
-	_update_auto_attack()
+	if auto_attack_enabled:
+		_update_auto_attack()
 	_update_hud()
 
 
@@ -188,13 +218,65 @@ func _update_hand_state( delta : float ) -> bool:
 		_hand_lost_time = 0.0
 	else:
 		_hand_lost_time += delta
-	return GestureInput.connected and GestureInput.calibrated \
-		and (GestureInput.hand_present or _hand_lost_time < HAND_GRACE)
+	var grace := guided_hand_grace if guided else hand_grace
+	return GestureInput.connected and GestureInput.calibrated 		and (GestureInput.hand_present or _hand_lost_time < grace)
+
+
+## 想操控但还没在操控：满足条件就起飞（或重新抓住正在返回的回旋镖）
+func _try_start( by_hand : bool, rise : bool ) -> void:
+	if _need_open:
+		if rise:
+			control_event.emit( "BLOCKED: NEED OPEN" )
+		return
+	if psi < PSI_START_MIN and not psi_infinite:
+		if rise:
+			_psi_low_feedback()
+			control_event.emit( "BLOCKED: PSI LOW" )
+		return
+	var b := _abilities.regrab_guided()
+	if b != null:
+		_begin_guided( b, by_hand, true )
+		control_event.emit( "REGRAB" )
+		return
+	if _abilities.has_boomerang():
+		return
+	var dir := _player.cardinal_direction
+	if by_hand:
+		# 朝光标方向起飞；光标就在主角身上时用主角朝向
+		var to_cursor := _cursor_pos - (_player.global_position + Boomerang.SPRITE_OFFSET)
+		if to_cursor.length() >= LAUNCH_AIM_MIN_DIST:
+			dir = to_cursor.normalized()
+		_launch_cursor = _cursor_pos
+	b = _abilities.start_guided( dir )
+	if b == null:
+		return
+	_begin_guided( b, by_hand, false )
+	control_event.emit( "LAUNCH" )
+
+
+## 正在操控：判断是否该松手（张开 / 手丢失 / 松开按键）
+func _check_release( hand_mode : bool ) -> void:
+	if _guided_by_hand:
+		if not hand_mode:
+			_end_guided( "RELEASE: HAND LOST" )
+		elif GestureInput.hand_present and not GestureInput.is_fist:
+			_end_guided( "RELEASE: OPEN" )
+	elif hand_mode:
+		_end_guided( "RELEASE: OPEN" )
+	elif not Input.is_action_pressed( "ability" ):
+		_end_guided( "RELEASE: KEY UP" )
 
 
 # ---------- 走位 ----------
 
 func _update_walk( hand_mode : bool ) -> void:
+	if not walk_enabled:
+		# 站桩：手势和键盘都不能走位
+		_player.use_move_override = true
+		_player.move_override = Vector2.ZERO
+		_player.move_speed_override = 0.0
+		_walking = false
+		return
 	if not hand_mode:
 		_player.use_move_override = false
 		_player.move_speed_override = 0.0
@@ -213,7 +295,7 @@ func _update_walk( hand_mode : bool ) -> void:
 	else:
 		_walking = d > WALK_START_DIST
 	_player.move_override = to_cursor / d if _walking and d > 0.001 else Vector2.ZERO
-	_player.move_speed_override = clampf( d * WALK_SPEED_GAIN, WALK_SPEED_MIN, WALK_SPEED_MAX ) if _walking else 0.0
+	_player.move_speed_override = clampf( d * walk_speed_gain, walk_speed_min, walk_speed_max ) if _walking else 0.0
 
 
 ## 操作框归一化坐标 -> 房间里的光标目标点（手活动区域线性映射到 CURSOR_RECT 并钳制）
@@ -225,25 +307,26 @@ func _hand_to_arena( p : Vector2 ) -> Vector2:
 
 # ---------- 回旋镖 ----------
 
-func _start_guided( by_hand : bool ) -> void:
-	var b := _abilities.start_guided( _player.cardinal_direction )
-	if b == null:
-		return
+## 进入操控状态。regrab 为 true 时回旋镖已在飞，不再固定目标点，直接追光标
+func _begin_guided( b : Boomerang, by_hand : bool, regrab : bool ) -> void:
 	_boomerang = b
 	guided = true
 	_guided_by_hand = by_hand
-	_guided_time = 0.0
+	_guided_time = LAUNCH_FIXED_TIME if regrab else 0.0
 	_player.can_move = false
 	_player.move_override = Vector2.ZERO
 
 
-func _end_guided() -> void:
+## reason 非空时发 control_event（外部清理、死亡等静默收尾传空）
+func _end_guided( reason : String = "" ) -> void:
 	if not guided:
 		return
 	guided = false
 	_boomerang = null
 	_abilities.release_guided()
 	_player.can_move = true
+	if reason != "":
+		control_event.emit( reason )
 
 
 func _update_guided( delta : float, hand_mode : bool ) -> void:
@@ -253,9 +336,13 @@ func _update_guided( delta : float, hand_mode : bool ) -> void:
 	var sprite_off := Boomerang.SPRITE_OFFSET
 	var target : Vector2
 	if _guided_time < LAUNCH_FIXED_TIME:
-		target = _player.global_position + _player.cardinal_direction * LAUNCH_FIXED_DIST
+		if _guided_by_hand:
+			target = _launch_cursor - sprite_off
+		else:
+			target = _player.global_position + _player.cardinal_direction * LAUNCH_FIXED_DIST
 	elif hand_mode:
 		# 让回旋镖的精灵对准光标：节点原点 = 光标 - 精灵偏移
+		# （手丢失但还在宽限内时光标不动，回旋镖就停在最后的目标点等待）
 		target = _cursor_pos - sprite_off
 	else:
 		var key_dir := Vector2(

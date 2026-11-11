@@ -43,7 +43,7 @@ func show_banner( text : String ) -> void:
 	_banner_tween.tween_property( banner_label, "modulate:a", 0.0, 0.4 )
 
 
-## 显示结算面板并暂停游戏；RETRY 获得焦点，回车 / 握拳都能确认
+## 显示结算面板并暂停游戏；RETRY 获得焦点，回车确认（手势不参与菜单操作）
 func show_result( victory : bool, kills : int, best : int ) -> void:
 	result_title.text = "VICTORY" if victory else "GAME OVER"
 	result_stats.text = "KILLS %d   BEST %d" % [ kills, best ]

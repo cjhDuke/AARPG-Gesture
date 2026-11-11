@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import synth  # noqa: E402  (同时把 gesture/ 加入 sys.path)
 import features  # noqa: E402
 from segment import Segmenter  # noqa: E402
+from tracker import GestureDebouncer  # noqa: E402
 
 
 class PipelineTest(unittest.TestCase):
@@ -81,6 +82,72 @@ class PipelineTest(unittest.TestCase):
         cv2.circle(img, (140, 180), 12, synth.SKIN, -1)
         res, f = self.run_pipeline(img)
         self.assertEqual(f.gesture, "none")
+
+
+class EdgeHoldTest(unittest.TestCase):
+    """手（不含小臂）贴到操作框左 / 右 / 上边界时 edge=True；防抖器在贴边时更难从 fist 切走。"""
+
+    def setUp(self):
+        self.cfg = synth.load_cfg()
+        self.seg = synth.make_segmenter(self.cfg)
+
+    def feats(self, img):
+        # 每次用全新的分割器：手跟踪会记住上一帧的位置，连续喂跳变的画面会被当成另一只手
+        seg = synth.make_segmenter(self.cfg)
+        return features.extract(seg.process(img).mask, self.cfg)
+
+    def test_interior_hand_not_edge(self):
+        f = self.feats(synth.draw_hand(0, center=(140, 200)))
+        self.assertFalse(f.edge)
+
+    def test_forearm_from_bottom_not_edge(self):
+        f = self.feats(synth.draw_hand(0, center=(150, 150), arm="down"))
+        self.assertFalse(f.edge)
+
+    def test_left_and_right_touch_is_edge(self):
+        for cx in (45, synth.W - 45):  # 拳半径 50：贴着左 / 右边界
+            f = self.feats(synth.draw_hand(0, center=(cx, 200)))
+            self.assertTrue(f.edge, cx)
+
+    def test_top_touch_is_edge(self):
+        f = self.feats(synth.draw_hand(0, center=(140, 45)))
+        self.assertTrue(f.edge)
+
+    def test_below_threshold_pixels_ignored(self):
+        cfg = synth.load_cfg()
+        cfg["features"]["edge_touch_pixels"] = 10 ** 6
+        f = features.extract(self.seg.process(synth.draw_hand(0, center=(45, 200))).mask, cfg)
+        self.assertFalse(f.edge)
+
+    def test_no_hand_not_edge(self):
+        f = self.feats(synth.canvas())
+        self.assertFalse(f.edge)
+
+    def test_arm_on_side_edge_not_counted(self):
+        """小臂贴着侧边界不算贴边：只看掌心附近、非小臂一侧的边界像素。"""
+        mask = np.zeros((synth.H, synth.W), np.uint8)
+        cv2.circle(mask, (140, 150), 50, 255, -1)
+        cv2.line(mask, (140, 150), (synth.W - 1, synth.H - 40), 255, 44)  # 小臂伸向右下，从右边界出框
+        f = features.extract(mask, self.cfg)
+        self.assertIsNotNone(f.arm_dir)
+        self.assertFalse(f.edge)
+
+    def test_debouncer_slow_release_while_clipped(self):
+        """握拳中手贴边：要连续 fist_release_frames_edge 帧张开才松开；握拳的判定不被贴边拖慢。"""
+        t = self.cfg["tracker"]
+        deb = GestureDebouncer(self.cfg)
+        for _ in range(t["debounce_frames"]):
+            deb.update("fist", True)
+        self.assertEqual(deb.stable, "fist")
+        for _ in range(t["fist_release_frames_edge"] - 1):
+            self.assertEqual(deb.update("palm", True), "fist")
+        self.assertEqual(deb.update("palm", True), "palm")
+        deb = GestureDebouncer(self.cfg)
+        for _ in range(t["debounce_frames"]):
+            deb.update("fist")
+        for _ in range(t["fist_release_frames"] - 1):
+            self.assertEqual(deb.update("palm"), "fist")
+        self.assertEqual(deb.update("palm"), "palm")
 
 
 class BackgroundTest(unittest.TestCase):

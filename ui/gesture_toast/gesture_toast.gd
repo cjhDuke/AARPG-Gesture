@@ -65,10 +65,13 @@ func _process(_delta: float) -> void:
 	if text == _text:
 		return
 	_text = text
+	if text == "":
+		_hide()
+		return
 	_show(text, info[1], info[2])
 
 
-## 返回 [文字, 颜色, 是否常驻]
+## 返回 [文字, 颜色, 是否常驻]；文字为空表示不显示
 func _current_info() -> Array:
 	if not _gi.connected:
 		return ["CAMERA OFFLINE", COL_WARN, true]
@@ -76,14 +79,23 @@ func _current_info() -> Array:
 		return ["SCANNING BACKGROUND", COL_SCAN, true]
 	if not _gi.calibrated:
 		return ["HAND OUT, PRESS F3", COL_WARN, true]
+	# 暂停（标题、暂停菜单、结算面板）时手势不控制菜单，只保留上面的状态类提示
+	if get_tree().paused:
+		return ["", COL_OPEN, false]
 	if not _gi.hand_present:
 		return ["NO HAND", COL_WARN, true]
 	if Time.get_ticks_msec() < _flash_until_msec:
 		return [_flash_text, COL_WARN, false]
-	var paused := get_tree().paused
 	if _gi.is_fist:
-		return ["FIST - CONFIRM" if paused else "FIST - BOOMERANG", COL_FIST, true]
-	return ["OPEN - SELECT" if paused else "OPEN - MOVE", COL_OPEN, false]
+		return ["FIST - BOOMERANG", COL_FIST, true]
+	return ["OPEN - MOVE", COL_OPEN, false]
+
+
+func _hide() -> void:
+	if _tween:
+		_tween.kill()
+	_tween = create_tween()
+	_tween.tween_property(_root, "modulate:a", 0.0, 0.1)
 
 
 func _show(text: String, color: Color, persistent: bool) -> void:
