@@ -52,6 +52,11 @@ class Segmenter:
         # 标定时手就放在中心采样框上：清空跟踪状态，下一帧优先取中心的连通域
         self.selector.reset(just_calibrated=True)
 
+    def set_hist(self, hist):
+        """直接载入已有的直方图（回放录像时用）。"""
+        self.hist = hist
+        self.selector.reset()
+
     def reset_tracking(self):
         """换操作框等场合：清空手的跟踪状态。"""
         self.selector.reset()

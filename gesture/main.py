@@ -11,6 +11,7 @@ import debug_view
 import features
 from capture import CameraSource, ImageSource, VideoSource
 from net import Net
+from recorder import Recorder, load_sidecar
 from segment import Segmenter
 from tracker import GestureDebouncer, ZoneTracker
 
@@ -41,7 +42,10 @@ def open_source(args, cfg):
         return ImageSource(args.image, mirror=not args.no_mirror,
                            size=(cam["width"], cam["height"]), fps=cam["image_fps"])
     if args.video:
-        return VideoSource(args.video, mirror=not args.no_mirror)
+        # 自己录的视频已经镜像过（旁边有 .json），不再翻转
+        meta, _ = load_sidecar(args.video)
+        mirrored = bool(meta and meta.get("mirrored"))
+        return VideoSource(args.video, mirror=not (args.no_mirror or mirrored))
     return CameraSource(cam["index"], cam["width"], cam["height"], cam["mirror"])
 
 
@@ -118,6 +122,14 @@ def run():
     view = debug_view.DebugView(os.path.join(HERE, "screenshots")) if show_window else None
     stage, seq = 0, 0
     roi_idx = load_roi_index(cfg)
+    if args.video:  # 回放自己录的视频：沿用录制时的操作框和肤色标定
+        meta, hist = load_sidecar(args.video)
+        if meta:
+            roi_idx = int(meta.get("roi_index", roi_idx)) % len(cfg["roi_presets"])
+            if hist is not None:
+                segmenter.set_hist(hist)
+    recorder = Recorder(os.path.join(HERE, "recordings"), cfg.get("record_max_seconds", 30.0))
+    toggle_rec = False
     cycle_roi = False
     last_ping = time.monotonic()
     fps, last_t, n_done, proc_sum = 0.0, None, 0, 0.0
@@ -134,11 +146,21 @@ def run():
                     break
                 continue
             frame, t_ms = got
+            if toggle_rec:
+                toggle_rec = False
+                if recorder.active:
+                    print("录像已保存：%s" % recorder.stop())
+                else:
+                    path = recorder.start(frame, roi_idx, segmenter.hist)
+                    print("开始录像：%s" % path if path else "错误：无法创建录像文件。")
+            if recorder.active and recorder.write(frame):  # 写的是未叠加任何标记的原始画面
+                print("录像到达时长上限，已自动保存。")
             t0 = time.perf_counter()
             if cycle_roi:  # 换操作框位置：脸或杂物在框里时用
                 cycle_roi = False
                 roi_idx = (roi_idx + 1) % len(cfg["roi_presets"])
                 save_roi_index(roi_idx)
+                recorder.update_meta(roi_idx, segmenter.hist)
                 debouncer, zones = GestureDebouncer(cfg), ZoneTracker(cfg)
                 segmenter.reset_tracking()  # 操作框尺寸可能变了
             roi, rect = crop_roi(frame, cfg["roi_presets"][roi_idx])
@@ -182,6 +204,9 @@ def run():
                     last_ping = now
                 elif name == "calibrate":
                     segmenter.calibrate(roi)
+                    recorder.update_meta(roi_idx, segmenter.hist)
+                elif name == "record":
+                    toggle_rec = True
                 elif name == "stage" and cmd.get("value") in (0, 1, 2, 3):
                     stage = int(cmd["value"])
                 elif name == "roi":
@@ -192,13 +217,17 @@ def run():
             if view:
                 info = {"gesture": gesture, "raw": feats.gesture, "zone": zone,
                         "defects": feats.defects, "solidity": feats.solidity,
-                        "fps": fps, "proc_ms": proc_ms, "calibrated": segmenter.calibrated}
+                        "fps": fps, "proc_ms": proc_ms, "calibrated": segmenter.calibrated,
+                        "rec_s": recorder.elapsed if recorder.active else None}
                 board = debug_view.compose(frame, rect, roi, seg, feats, info, cfg)
                 key = view.show(board)
                 if key == "q":
                     break
                 if key == "c":
                     segmenter.calibrate(roi)
+                    recorder.update_meta(roi_idx, segmenter.hist)
+                elif key == "v":
+                    toggle_rec = True
                 elif key == "r":
                     cycle_roi = True
                 elif key == "s":
@@ -212,6 +241,8 @@ def run():
     except KeyboardInterrupt:
         pass
     finally:
+        if recorder.active:
+            print("录像已保存：%s" % recorder.stop())
         source.release()
         net.close()
         if view:

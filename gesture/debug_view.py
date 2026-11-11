@@ -85,10 +85,15 @@ def _text_panel(info):
         "[c] calibrate (hand on yellow box)",
         "[r] move ROI (keep face out)",
         "[s] save screenshot",
+        "[v] start / stop recording",
         "[q]/Esc quit",
     ]
     for i, line in enumerate(lines):
         cv2.putText(tile, line, (8, 44 + i * 26), cv2.FONT_HERSHEY_SIMPLEX, 0.5, WHITE, 1, cv2.LINE_AA)
+    if info.get("rec_s") is not None:
+        cv2.circle(tile, (TILE_W - 110, 14), 6, RED, -1)
+        cv2.putText(tile, "REC %4.1fs" % info["rec_s"], (TILE_W - 98, 19),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, RED, 1, cv2.LINE_AA)
     return _title(tile, "6 Result")
 
 
