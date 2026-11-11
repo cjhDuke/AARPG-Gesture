@@ -42,7 +42,8 @@ func _ready() -> void:
 	_image.size = Vector2(PANEL_W, 80)
 	_image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_image.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	# 画面按窗口分辨率显示（项目拉伸模式是 canvas_items），用线性过滤
+	_image.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	_ignore(_image)
 	_root.add_child(_image)
 

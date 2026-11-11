@@ -12,21 +12,24 @@ const CENTER := Vector2( 256, 144 )
 const ARENA_RECT := Rect2( 28, 44, 456, 200 )
 
 ## 手的活动区域（操作框归一化 0-1）映射到光标可达矩形 CURSOR_RECT。
-## 以下数字按默认操作框 right（250x420 摄像头像素）推出，目标是横纵增益一致、约 1.5 游戏像素 / 摄像头像素：
-## 横向 0.05-0.95 = 225 像素 -> 338 游戏像素；纵向 0.34-0.66 = 约 134 像素 -> 200 游戏像素。
+## 以下数字按默认操作框 right（250x420 摄像头像素）推出：
+## 横向 0.05-0.95 = 225 像素 -> 338 游戏像素（增益约 1.5，操作框宽度已用满，再降就够不到两侧）；
+## 纵向 0.25-0.75 = 210 像素 -> 200 游戏像素（增益约 0.95）。
 ## 换了操作框尺寸（预设 right-wide 等）要重算。协议里没有操作框的像素尺寸，所以用归一化常量。
 const HAND_X_MIN : float = 0.05
 const HAND_X_MAX : float = 0.95
-const HAND_Y_MIN : float = 0.34
-const HAND_Y_MAX : float = 0.66
+const HAND_Y_MIN : float = 0.25
+const HAND_Y_MAX : float = 0.75
 ## 光标可达矩形：纵向铺满 ARENA_RECT，横向在 ARENA_RECT 内居中（两侧各约 59 像素够不到）
 const CURSOR_RECT := Rect2( 87, 44, 338, 200 )
 ## 手势模式下光标每秒最多移动的像素数
-const CURSOR_MAX_SPEED : float = 400.0
+const CURSOR_MAX_SPEED : float = 240.0
+## 光标朝手的位置做指数平滑的时间常数（秒），越大越"肉"
+const CURSOR_SMOOTH_TIME : float = 0.12
 ## 手势模式主角走速 = clamp( 离光标距离 * WALK_SPEED_GAIN, WALK_SPEED_MIN, WALK_SPEED_MAX )
-const WALK_SPEED_GAIN : float = 8.0
-const WALK_SPEED_MIN : float = 60.0
-const WALK_SPEED_MAX : float = 200.0
+const WALK_SPEED_GAIN : float = 5.0
+const WALK_SPEED_MIN : float = 40.0
+const WALK_SPEED_MAX : float = 130.0
 ## 头顶念力条的最小 y（世界坐标），保证不超出镜头上沿
 const PSI_BAR_MIN_Y : float = 12.0
 ## 离光标多远开始走 / 停下（滞回）
@@ -130,9 +133,10 @@ func _process( delta : float ) -> void:
 	var hand_now := hand_mode and GestureInput.hand_present
 	if hand_now:
 		var goal := _hand_to_arena( GestureInput.hand_pos )
-		# 手刚出现的第一帧直接跳过去，之后限速追
+		# 手刚出现的第一帧直接跳过去，之后先平滑再限速
 		if _had_hand:
-			_cursor_pos = _cursor_pos.move_toward( goal, CURSOR_MAX_SPEED * delta )
+			var smoothed := _cursor_pos.lerp( goal, 1.0 - exp( -delta / CURSOR_SMOOTH_TIME ) )
+			_cursor_pos = _cursor_pos.move_toward( smoothed, CURSOR_MAX_SPEED * delta )
 		else:
 			_cursor_pos = goal
 	_had_hand = hand_now
