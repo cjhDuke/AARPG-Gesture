@@ -1,9 +1,11 @@
 extends Node
 ## 手势输入接收端（autoload: GestureInput）
-## 通过本机 UDP 接收 Python 识别端的状态包和画面包，
-## 按 docs/ai/gesture-protocol.md 的边沿规则注入 InputEventAction。
+## 通过本机 UDP 接收 Python 识别端的状态包和画面包。
+## 游戏进行中只对外提供状态（hand_pos / is_fist 等），由关卡控制器使用；
+## 游戏暂停（菜单）时按 docs/ai/gesture-protocol.md 的边沿规则注入 ui_* 动作。
 
-signal direction_triggered(dir: Vector2)
+## 握拳 / 张开切换时发出
+signal fist_changed(is_fist: bool)
 signal state_updated(state: Dictionary)
 signal frame_updated(texture: ImageTexture)
 signal connection_changed(connected: bool)
@@ -14,12 +16,12 @@ const HOST := "127.0.0.1"
 const TIMEOUT_MSEC := 1000
 const PING_INTERVAL_MSEC := 1000
 const PANEL_SCENE := preload("res://ui/gesture_panel/gesture_panel.tscn")
+const TOAST_SCENE := preload("res://ui/gesture_toast/gesture_toast.tscn")
+## 命令行用户参数（`-- --no-gesture-autostart`）：不拉起识别进程，用于配合 fake_sender 测试
+const NO_AUTOSTART_ARG := "--no-gesture-autostart"
 
 const DIR_ACTION := {
 	"up": "ui_up", "down": "ui_down", "left": "ui_left", "right": "ui_right"
-}
-const DIR_VECTOR := {
-	"up": Vector2.UP, "down": Vector2.DOWN, "left": Vector2.LEFT, "right": Vector2.RIGHT
 }
 
 ## 是否在游戏启动时自动拉起识别进程
@@ -32,6 +34,15 @@ var latency_ms: float = 0.0
 ## Godot 侧统计的状态包到达间隔（毫秒，指数平滑）
 var packet_interval_ms: float = 0.0
 var last_stage: int = 0
+
+## 操作框内是否有手
+var hand_present: bool = false
+## 掌心在操作框内的归一化坐标（0-1，原点左上，画面已镜像）
+var hand_pos: Vector2 = Vector2(0.5, 0.5)
+var is_fist: bool = false
+## 识别端是否已有背景模型 / 是否正在采集背景
+var calibrated: bool = false
+var calibrating: bool = false
 
 var _udp := PacketPeerUDP.new()
 var _bound := false
@@ -58,7 +69,8 @@ func _ready() -> void:
 		_bound = true
 		_udp.set_dest_address(HOST, SEND_PORT)
 	add_child(PANEL_SCENE.instantiate())
-	if autostart and _bound:
+	add_child(TOAST_SCENE.instantiate())
+	if autostart and _bound and not OS.get_cmdline_user_args().has(NO_AUTOSTART_ARG):
 		_start_recognizer()
 
 
@@ -118,24 +130,19 @@ func _on_state(st: Dictionary) -> void:
 	var zone := str(st.get("zone", "center"))
 	var paused := get_tree().paused
 
-	# 区域边沿
-	if zone != _prev_zone and DIR_VECTOR.has(zone):
-		direction_triggered.emit(DIR_VECTOR[zone])
-		if paused:
+	# 对外状态
+	hand_present = bool(st.get("hand", false))
+	hand_pos = Vector2(float(st.get("px", 0.5)), float(st.get("py", 0.5)))
+	calibrated = bool(st.get("calibrated", false))
+	calibrating = bool(st.get("calibrating", false))
+	_set_fist(gesture == "fist")
+
+	# 菜单：只在游戏暂停时注入 ui_* 动作
+	if paused:
+		if zone != _prev_zone and DIR_ACTION.has(zone):
 			_pulse(DIR_ACTION[zone])
-		elif gesture != "fist" and gesture != "two":
-			_pulse("attack")
-	# 手势边沿
-	if gesture != _prev_gesture:
-		if gesture == "fist":
-			if paused:
-				_pulse("ui_accept")
-			else:
-				_press("attack")
-		elif _prev_gesture == "fist":
-			_release("attack")
-		if gesture == "two" and not paused:
-			_pulse("ability")
+		if gesture != _prev_gesture and gesture == "fist":
+			_pulse("ui_accept")
 	_prev_zone = zone
 	_prev_gesture = gesture
 	last_state = st
@@ -153,6 +160,13 @@ func _on_frame(pkt: PackedByteArray) -> void:
 	frame_updated.emit(_texture)
 
 
+func _set_fist(v: bool) -> void:
+	if is_fist == v:
+		return
+	is_fist = v
+	fist_changed.emit(v)
+
+
 func _set_connected(v: bool) -> void:
 	if connected == v:
 		return
@@ -160,6 +174,11 @@ func _set_connected(v: bool) -> void:
 	if not v:
 		_release_all()
 		last_state = {}
+		hand_present = false
+		hand_pos = Vector2(0.5, 0.5)
+		calibrated = false
+		calibrating = false
+		_set_fist(false)
 		_prev_zone = "center"
 		_prev_gesture = "none"
 		packet_interval_ms = 0.0
@@ -212,6 +231,11 @@ func request_calibrate() -> void:
 ## 把操作框换到下一个预设位置（脸或杂物在框里时用）
 func cycle_roi() -> void:
 	_send_cmd({"cmd": "roi"})
+
+
+## 开始 / 停止录像（识别端把镜像后的画面存到 gesture/recordings/）
+func toggle_record() -> void:
+	_send_cmd({"cmd": "record"})
 
 
 func set_stage(n: int) -> void:

@@ -1,5 +1,5 @@
 class_name WaveSpawner extends Node2D
-## 波次表 + 四个生成点。一波的敌人按间隔陆续生成，全部被消灭后发 wave_cleared。
+## 波次表 + 生成位置。一波的敌人按间隔陆续生成，全部被消灭后发 wave_cleared。
 
 signal enemy_killed
 signal wave_cleared
@@ -9,17 +9,18 @@ const GOBLIN : PackedScene = preload("res://enemies/goblin/goblin.tscn")
 
 ## 波次表（想调难度只改这里）：史莱姆数、哥布林数、生成间隔（秒）
 const WAVES : Array[Dictionary] = [
-	{ "slimes": 4, "goblins": 0, "interval": 1.5 },
-	{ "slimes": 6, "goblins": 0, "interval": 1.2 },
-	{ "slimes": 5, "goblins": 2, "interval": 1.2 },
-	{ "slimes": 6, "goblins": 4, "interval": 1.0 },
-	{ "slimes": 8, "goblins": 6, "interval": 0.9 },
+	{ "slimes": 5, "goblins": 0, "interval": 1.3 },
+	{ "slimes": 7, "goblins": 1, "interval": 1.1 },
+	{ "slimes": 7, "goblins": 3, "interval": 1.0 },
+	{ "slimes": 8, "goblins": 5, "interval": 0.9 },
+	{ "slimes": 10, "goblins": 7, "interval": 0.8 },
 ]
+## 生成位置离主角至少这么远（像素），最多重试 SPAWN_TRIES 次
+const MIN_SPAWN_DIST : float = 110.0
+const SPAWN_TRIES : int = 8
 
-## 敌人加到父节点（关卡根）下，和主角同层才能一起按 y 排序。
-## 生成点是本节点下的 Marker2D 子节点，本节点需放在原点。
+## 敌人加到父节点（关卡根）下，和主角同层才能一起按 y 排序。本节点需放在原点。
 @onready var enemy_parent : Node = get_parent()
-@onready var spawn_points : Array[Node] = get_children().filter( func( n ): return n is Marker2D )
 
 var _queue : Array[PackedScene] = []
 var _interval : float = 1.0
@@ -66,8 +67,24 @@ func _spawn( scene : PackedScene ) -> void:
 	var enemy : Enemy = scene.instantiate()
 	enemy.enemy_destroyed.connect( _on_enemy_destroyed )
 	enemy_parent.add_child( enemy )
-	enemy.global_position = spawn_points.pick_random().global_position
+	enemy.global_position = _pick_spawn_position()
 	_alive += 1
+
+
+## ARENA_RECT 四条边内侧的随机位置，且离主角不少于 MIN_SPAWN_DIST
+func _pick_spawn_position() -> Vector2:
+	var rect : Rect2 = HandController.ARENA_RECT
+	var player_pos : Vector2 = PlayerManager.player.global_position
+	var pos := rect.position
+	for i in SPAWN_TRIES:
+		match randi() % 4:
+			0: pos = Vector2( randf_range( rect.position.x, rect.end.x ), rect.position.y )
+			1: pos = Vector2( randf_range( rect.position.x, rect.end.x ), rect.end.y )
+			2: pos = Vector2( rect.position.x, randf_range( rect.position.y, rect.end.y ) )
+			_: pos = Vector2( rect.end.x, randf_range( rect.position.y, rect.end.y ) )
+		if pos.distance_to( player_pos ) >= MIN_SPAWN_DIST:
+			break
+	return pos
 
 
 func _on_enemy_destroyed( _hit_box : HitBox ) -> void:

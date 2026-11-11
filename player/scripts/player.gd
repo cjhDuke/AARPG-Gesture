@@ -9,6 +9,9 @@ var max_hp : int = 6
 var is_dead : bool = false
 ## 为 false 时主角站桩：direction 恒为零，不会走动
 var can_move : bool = true
+## 为 true 时移动方向取 move_override（已归一化或零），不读键盘；由关卡控制器（手势）使用
+var use_move_override := false
+var move_override := Vector2.ZERO
 
 @onready var animation_player: AnimationPlayer = $AnimationPlayer
 @onready var sprite_2d: Sprite2D = $Sprite2D
@@ -37,11 +40,14 @@ func _process(delta: float) -> void:
 	if is_dead or not can_move:
 		direction = Vector2.ZERO
 		return
-	
-	direction = Vector2(
-		Input.get_axis("left", "right"),
-		Input.get_axis("up", "down")
-	).normalized()
+
+	if use_move_override:
+		direction = move_override
+	else:
+		direction = Vector2(
+			Input.get_axis("left", "right"),
+			Input.get_axis("up", "down")
+		).normalized()
 	
 	pass
 	

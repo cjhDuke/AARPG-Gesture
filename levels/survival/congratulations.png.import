@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cujrrhl1sgr8a"
-path="res://.godot/imported/congratulations.png-86e255784a1cb0ecc5cfcdf5440f4c01.ctex"
+path="res://.godot/imported/congratulations.png-4be40814c32c7edbe93d0d4df1d367c5.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://levels/guard/congratulations.png"
-dest_files=["res://.godot/imported/congratulations.png-86e255784a1cb0ecc5cfcdf5440f4c01.ctex"]
+source_file="res://levels/survival/congratulations.png"
+dest_files=["res://.godot/imported/congratulations.png-4be40814c32c7edbe93d0d4df1d367c5.ctex"]
 
 [params]
 

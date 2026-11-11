@@ -1,13 +1,13 @@
 [gd_scene format=3]
 
-[ext_resource type="Script" path="res://levels/guard/guard_arena.gd" id="1_arena"]
-[ext_resource type="AudioStream" path="res://levels/guard/dungeon.mp3" id="2_music"]
+[ext_resource type="Script" path="res://levels/survival/survival_arena.gd" id="1_arena"]
+[ext_resource type="AudioStream" path="res://levels/survival/dungeon.mp3" id="2_music"]
 [ext_resource type="PackedScene" uid="uid://twoq7utdfew4" path="res://tile_maps/dungeon_01.tscn" id="3_tilemap"]
-[ext_resource type="Script" path="res://levels/guard/wave_spawner.gd" id="4_spawner"]
-[ext_resource type="Script" path="res://levels/guard/guard_controller.gd" id="5_controller"]
-[ext_resource type="PackedScene" path="res://levels/guard/guard_hud.tscn" id="6_hud"]
+[ext_resource type="Script" path="res://levels/survival/wave_spawner.gd" id="4_spawner"]
+[ext_resource type="Script" path="res://levels/survival/hand_controller.gd" id="5_controller"]
+[ext_resource type="PackedScene" path="res://levels/survival/survival_hud.tscn" id="6_hud"]
 
-[node name="GuardArena" type="Node2D"]
+[node name="SurvivalArena" type="Node2D"]
 script = ExtResource("1_arena")
 music = ExtResource("2_music")
 
@@ -17,22 +17,10 @@ layer_0/tile_data = PackedInt32Array(-131075, 589824, 0, -65539, 589824, 1, -3, 
 [node name="WaveSpawner" type="Node2D" parent="."]
 script = ExtResource("4_spawner")
 
-[node name="SpawnTop" type="Marker2D" parent="WaveSpawner"]
-position = Vector2(256, 16)
-
-[node name="SpawnBottom" type="Marker2D" parent="WaveSpawner"]
-position = Vector2(256, 272)
-
-[node name="SpawnLeft" type="Marker2D" parent="WaveSpawner"]
-position = Vector2(16, 144)
-
-[node name="SpawnRight" type="Marker2D" parent="WaveSpawner"]
-position = Vector2(496, 144)
-
-[node name="GuardController" type="Node" parent="."]
+[node name="HandController" type="Node" parent="."]
 script = ExtResource("5_controller")
 
 [node name="WaveTimer" type="Timer" parent="."]
 one_shot = true
 
-[node name="GuardHud" parent="." instance=ExtResource("6_hud")]
+[node name="SurvivalHud" parent="." instance=ExtResource("6_hud")]

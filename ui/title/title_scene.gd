@@ -1,6 +1,6 @@
 extends Node2D
 
-const START_LEVEL: String = "res://levels/guard/guard_arena.tscn"
+const START_LEVEL: String = "res://levels/survival/survival_arena.tscn"
 ## 标题背景的镜头位置（主角被隐藏，只借用它身上的 Camera2D）
 const CAMERA_POS := Vector2(230, 132)
 

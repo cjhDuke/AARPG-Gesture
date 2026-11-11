@@ -1,10 +1,16 @@
-class_name GuardHud extends CanvasLayer
-## 守卫模式的界面：底部状态行、WAVE 提示、胜负结算面板
+class_name SurvivalHud extends CanvasLayer
+## 生存模式的界面：底部状态行、念力条、WAVE 提示、胜负结算面板
+
+## 念力条颜色：低于起飞阈值时变红
+const PSI_COLOR := Color( 0.25, 0.9, 1.0 )
+const PSI_COLOR_LOW := Color( 1.0, 0.3, 0.25 )
+const PSI_THRESHOLD := 0.3
 
 signal retry_pressed
 signal title_pressed
 
 @onready var status_label : Label = %StatusLabel
+@onready var psi_fill : ColorRect = %PsiFill
 @onready var banner_label : Label = %BannerLabel
 @onready var result_panel : Control = %ResultPanel
 @onready var result_title : Label = %ResultTitle
@@ -31,6 +37,13 @@ func _process( _delta : float ) -> void:
 
 func set_status( wave : int, total_waves : int, kills : int, best : int ) -> void:
 	status_label.text = "WAVE %d/%d  KILLS %d  BEST %d" % [ wave, total_waves, kills, best ]
+
+
+## 念力条，value 为 0-1
+func set_psi( value : float ) -> void:
+	value = clampf( value, 0.0, 1.0 )
+	psi_fill.anchor_right = value
+	psi_fill.color = PSI_COLOR if value >= PSI_THRESHOLD else PSI_COLOR_LOW
 
 
 func show_banner( text : String ) -> void:

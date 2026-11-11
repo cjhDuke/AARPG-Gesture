@@ -28,7 +28,7 @@ PlayerHud="*uid://c2qudfadoekdx"
 PlayerManager="*uid://cwvtlya7vog2f"
 SceneTransition="*uid://bu1cxxl11qpup"
 PauseMenu="*uid://fft2clkfyt2x"
-GuardStats="*res://autoload/guard_stats.gd"
+RunStats="*res://autoload/run_stats.gd"
 GestureInput="*res://autoload/gesture_input.gd"
 
 [display]

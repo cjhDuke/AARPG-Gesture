@@ -1,11 +1,15 @@
 extends CanvasLayer
 ## 手势调试面板：左上角小窗，显示识别画面和当前手势。
-## F1 显示/隐藏，F2 切换阶段 0-3，F3 请求标定，F4 切换操作框位置。
+## 默认是紧凑模式（只有一小块画面，少挡游戏区域）。
+## F1 在 紧凑 / 完整（带文字）/ 隐藏 之间切换，F2 切换阶段 0-3，F3 重新采集背景，F4 切换操作框位置，F5 开始/停止录像。
 
 const PANEL_W := 110
+const COMPACT_SIZE := Vector2(64, 48)
+const FULL_IMAGE_SIZE := Vector2(PANEL_W, 80)
+const FULL_SIZE := Vector2(PANEL_W, 124)
+enum Mode { COMPACT, FULL, HIDDEN }
 const FONT_SIZE := 16
-const STAGE_NAMES := ["RAW", "BPROJ", "THRESH", "MORPH"]
-const ZONE_TEXT := {"center": "-", "up": "UP", "down": "DOWN", "left": "LEFT", "right": "RIGHT"}
+const STAGE_NAMES := ["RAW", "DIFF", "MASK", "MORPH"]
 
 var _gi: Node
 var _root: Control
@@ -15,6 +19,8 @@ var _line_gesture: Label
 var _line_perf: Label
 var _line_stage: Label
 var _stage := 0
+var _mode := Mode.COMPACT
+var _bg: ColorRect
 
 
 func _ready() -> void:
@@ -26,11 +32,10 @@ func _ready() -> void:
 	_ignore(_root)
 	add_child(_root)
 
-	var bg := ColorRect.new()
-	bg.color = Color(0, 0, 0, 0.6)
-	bg.size = _root.size
-	_ignore(bg)
-	_root.add_child(bg)
+	_bg = ColorRect.new()
+	_bg.color = Color(0, 0, 0, 0.6)
+	_ignore(_bg)
+	_root.add_child(_bg)
 
 	_image = TextureRect.new()
 	_image.position = Vector2(0, 0)
@@ -53,6 +58,19 @@ func _ready() -> void:
 	_gi.connection_changed.connect(_on_connection)
 	_on_connection(_gi.connected)
 	_refresh_stage()
+	_apply_mode()
+
+
+## 紧凑模式只留一小块画面；没连上识别端时整个收起（正上方的提示框会显示 CAMERA OFFLINE）
+func _apply_mode() -> void:
+	var full := _mode == Mode.FULL
+	_root.visible = full or (_mode == Mode.COMPACT and _gi.connected)
+	_root.size = FULL_SIZE if full else COMPACT_SIZE
+	_bg.size = _root.size
+	_image.size = FULL_IMAGE_SIZE if full else COMPACT_SIZE
+	_offline.visible = full and not _gi.connected
+	for l in [_line_gesture, _line_perf, _line_stage]:
+		l.visible = full
 
 
 func _ignore(c: Control) -> void:
@@ -71,7 +89,7 @@ func _make_label(pos: Vector2, text: String) -> Label:
 
 
 func _on_connection(c: bool) -> void:
-	_offline.visible = not c
+	_apply_mode()
 	if not c:
 		_image.texture = null
 		_line_gesture.text = ""
@@ -80,8 +98,7 @@ func _on_connection(c: bool) -> void:
 
 func _on_state(st: Dictionary) -> void:
 	var g := str(st.get("gesture", "none")).to_upper()
-	var z: String = ZONE_TEXT.get(str(st.get("zone", "center")), "-")
-	_line_gesture.text = "%s %s" % [g, z]
+	_line_gesture.text = "%s %.2f" % [g, float(st.get("open_ratio", 0.0))]
 	_line_perf.text = "%dfps %.1fms" % [int(float(st.get("fps", 0.0))), float(st.get("proc_ms", 0.0))]
 	_refresh_stage()
 
@@ -98,7 +115,8 @@ func _input(event: InputEvent) -> void:
 		return
 	match event.physical_keycode:
 		KEY_F1:
-			_root.visible = not _root.visible
+			_mode = (_mode + 1) % Mode.size() as Mode
+			_apply_mode()
 		KEY_F2:
 			_stage = (_stage + 1) % 4
 			_gi.set_stage(_stage)
@@ -107,3 +125,5 @@ func _input(event: InputEvent) -> void:
 			_gi.request_calibrate()
 		KEY_F4:
 			_gi.cycle_roi()
+		KEY_F5:
+			_gi.toggle_record()
