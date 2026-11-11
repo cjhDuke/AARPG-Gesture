@@ -5,47 +5,10 @@
 [ext_resource type="PackedScene" uid="uid://twoq7utdfew4" path="res://tile_maps/dungeon_01.tscn" id="2_y1agn"]
 [ext_resource type="AudioStream" uid="uid://bwxk7jcbxsmkf" path="res://ui/title/menu_focus.wav" id="3_lj5tl"]
 [ext_resource type="AudioStream" uid="uid://c54nib23lkpnu" path="res://ui/title/menu_select.wav" id="4_fkwea"]
-[ext_resource type="Texture2D" uid="uid://bwr2wcrpxydck" path="res://ui/title/title.png" id="4_i4gmv"]
 [ext_resource type="PackedScene" uid="uid://cq4s5v6kefos" path="res://ui/title/splash_screen.tscn" id="8_lj5tl"]
-
-[sub_resource type="Animation" id="Animation_0q24l"]
-length = 0.001
-tracks/0/type = "value"
-tracks/0/imported = false
-tracks/0/enabled = true
-tracks/0/path = NodePath(".:frame")
-tracks/0/interp = 1
-tracks/0/loop_wrap = true
-tracks/0/keys = {
-"times": PackedFloat32Array(0),
-"transitions": PackedFloat32Array(1),
-"update": 1,
-"values": [0]
-}
-
-[sub_resource type="Animation" id="Animation_5wnq4"]
-resource_name = "default"
-length = 5.0
-loop_mode = 1
-step = 0.05
-tracks/0/type = "value"
-tracks/0/imported = false
-tracks/0/enabled = true
-tracks/0/path = NodePath(".:frame")
-tracks/0/interp = 1
-tracks/0/loop_wrap = true
-tracks/0/keys = {
-"times": PackedFloat32Array(0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35),
-"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1, 1, 1),
-"update": 1,
-"values": [0, 1, 2, 3, 4, 5, 6, 0]
-}
-
-[sub_resource type="AnimationLibrary" id="AnimationLibrary_1a1kh"]
-_data = {
-&"RESET": SubResource("Animation_0q24l"),
-&"default": SubResource("Animation_5wnq4")
-}
+[ext_resource type="Script" path="res://ui/title/title_stage.gd" id="9_stage"]
+[ext_resource type="Script" path="res://ui/title/title_logo.gd" id="10_logo"]
+[ext_resource type="Script" path="res://ui/title/title_boomerang.gd" id="11_boom"]
 
 [node name="title_scene" type="Node2D" unique_id=1179631819]
 script = ExtResource("1_0q24l")
@@ -66,57 +29,100 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
 
-[node name="ColorRect" type="ColorRect" parent="CanvasLayer/Control" unique_id=1600629611]
+[node name="Stage" type="Node2D" parent="CanvasLayer/Control"]
+script = ExtResource("9_stage")
+
+[node name="Dim" type="ColorRect" parent="CanvasLayer/Control"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.22658296, 0.22658296, 0.22658296, 0.526)
+mouse_filter = 2
+color = Color(0.04, 0.03, 0.08, 0.6)
 
-[node name="Sprite2D" type="Sprite2D" parent="CanvasLayer/Control" unique_id=1733247620]
-position = Vector2(233, 133)
-texture = ExtResource("4_i4gmv")
-hframes = 4
-vframes = 2
-
-[node name="AnimationPlayer" type="AnimationPlayer" parent="CanvasLayer/Control/Sprite2D" unique_id=514897216]
-libraries/ = SubResource("AnimationLibrary_1a1kh")
-
-[node name="Button_start" type="Button" parent="CanvasLayer/Control" unique_id=277409530]
+[node name="Logo" type="Control" parent="CanvasLayer/Control"]
 layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -219.0
-offset_top = 70.0
-offset_right = -32.0
-offset_bottom = 96.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("10_logo")
+
+[node name="Subtitle" type="Label" parent="CanvasLayer/Control"]
+modulate = Color(1, 1, 1, 0)
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -120.0
+offset_top = 90.0
+offset_right = 120.0
+offset_bottom = 113.0
+grow_horizontal = 2
+theme_override_colors/font_color = Color(0.6, 0.95, 1, 1)
+theme_override_colors/font_outline_color = Color(0.1, 0.07, 0.12, 1)
+theme_override_constants/outline_size = 4
+text = "GESTURE SURVIVAL"
+horizontal_alignment = 1
+
+[node name="OrbitBoomerang" type="Node2D" parent="CanvasLayer/Control"]
+visible = false
+script = ExtResource("11_boom")
+orbit = true
+center = Vector2(240, 66)
+radius = Vector2(176, 48)
+
+[node name="Menu" type="VBoxContainer" parent="CanvasLayer/Control"]
+modulate = Color(1, 1, 1, 0)
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -60.0
+offset_top = 142.0
+offset_right = 60.0
+offset_bottom = 202.0
+grow_horizontal = 2
+theme_override_constants/separation = 8
+
+[node name="Button_start" type="Button" parent="CanvasLayer/Control/Menu"]
+custom_minimum_size = Vector2(0, 26)
+layout_mode = 2
 text = "START"
 
-[node name="Button_quit" type="Button" parent="CanvasLayer/Control" unique_id=500093120]
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = 19.0
-offset_top = 70.0
-offset_right = 206.0
-offset_bottom = 96.0
-grow_horizontal = 2
-grow_vertical = 2
+[node name="Button_quit" type="Button" parent="CanvasLayer/Control/Menu"]
+custom_minimum_size = Vector2(0, 26)
+layout_mode = 2
 text = "QUIT"
 
-[node name="HintLabel" type="Label" parent="CanvasLayer/Control" unique_id=1900000001]
-modulate = Color(1, 1, 1, 0.75)
+[node name="Marker" type="Node2D" parent="CanvasLayer/Control/Menu"]
+script = ExtResource("11_boom")
+
+[node name="HintLabel" type="Label" parent="CanvasLayer/Control"]
+modulate = Color(1, 1, 1, 0.85)
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -240.0
+offset_top = -48.0
+offset_right = 240.0
+offset_bottom = -26.0
+grow_horizontal = 2
+grow_vertical = 0
+text = "OPEN HAND: MOVE / SELECT    FIST: BOOMERANG / CONFIRM"
+horizontal_alignment = 1
+
+[node name="HintLabel2" type="Label" parent="CanvasLayer/Control"]
+modulate = Color(1, 1, 1, 0.5)
 layout_mode = 1
 anchors_preset = 7
 anchor_left = 0.5
@@ -129,7 +135,7 @@ offset_right = 240.0
 offset_bottom = -4.0
 grow_horizontal = 2
 grow_vertical = 0
-text = "F3: CALIBRATE HAND   F4: MOVE BOX   ARROWS/J/L: KEYBOARD"
+text = "F3 RESCAN   F4 BOX   KEYBOARD: ARROWS / J / L"
 horizontal_alignment = 1
 
 [node name="SplashScreen" parent="CanvasLayer" unique_id=678264783 instance=ExtResource("8_lj5tl")]
