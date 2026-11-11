@@ -7,6 +7,8 @@ signal TileMapBoundsChanged(bounds: Array[Vector2])
 
 var current_tilemap_bounds: Array[Vector2]
 var is_loading_level: bool = false
+## 命令行用户参数 `-- --practice`：直接进回旋镖练习场（跳过 splash 和标题），暂停菜单不显示 TITLE
+var practice_mode: bool = OS.get_cmdline_user_args().has("--practice")
 
 
 func _ready() -> void:

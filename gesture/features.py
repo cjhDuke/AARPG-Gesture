@@ -98,6 +98,25 @@ def touches_edge(mask, fcfg, center=None, radius=0.0, arm=None):
     return int(np.count_nonzero(ok)) >= n
 
 
+def simplify_contour(contour, roi_w, roi_h, eps_ratio=0.012, max_points=48):
+    """把手轮廓简化成多边形，坐标归一化到操作框（0-1，保留 3 位小数）。
+
+    approxPolyDP 的 epsilon 初值 = 操作框宽度 * eps_ratio；点数超过 max_points 就把 epsilon
+    放大 1.3 倍重算，直到不超过为止（状态包是 UDP，不能太大）。没有轮廓返回空列表。
+    """
+    if contour is None or len(contour) < 3 or roi_w <= 0 or roi_h <= 0:
+        return []
+    eps = max(roi_w * eps_ratio, 0.5)
+    poly = cv2.approxPolyDP(contour, eps, True)
+    for _ in range(40):
+        if len(poly) <= max_points:
+            break
+        eps *= 1.3
+        poly = cv2.approxPolyDP(contour, eps, True)
+    pts = poly.reshape(-1, 2).astype(np.float64)
+    return [[round(float(x) / roi_w, 3), round(float(y) / roi_h, 3)] for x, y in pts[:max_points]]
+
+
 def extract(mask, cfg):
     """从掩膜提取全部特征并给出原始手势。"""
     fcfg = cfg["features"]

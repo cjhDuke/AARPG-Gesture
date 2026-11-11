@@ -305,6 +305,14 @@ func _hand_to_arena( p : Vector2 ) -> Vector2:
 	return CURSOR_RECT.position + Vector2( u, v ) * CURSOR_RECT.size
 
 
+## 同一个映射但不钳制：操作框边缘（归一化 0 / 1）会落在 CURSOR_RECT 之外。
+## 公开给练习场的 CAMERA 手影用，把整幅操作框画面严格对齐到手→光标的映射上
+func hand_to_arena_unclamped( p : Vector2 ) -> Vector2:
+	var u := (p.x - HAND_X_MIN) / (HAND_X_MAX - HAND_X_MIN)
+	var v := (p.y - HAND_Y_MIN) / (HAND_Y_MAX - HAND_Y_MIN)
+	return CURSOR_RECT.position + Vector2( u, v ) * CURSOR_RECT.size
+
+
 # ---------- 回旋镖 ----------
 
 ## 进入操控状态。regrab 为 true 时回旋镖已在飞，不再固定目标点，直接追光标

@@ -2,9 +2,10 @@ class_name BoomerangTest extends Level
 ## 回旋镖练习场（调试工具，长期保留）：和生存关卡同一个房间，主角站在房间中心不能走位、不自动挥剑，
 ## 只练"握拳放回旋镖、移动、张开收回"。场上 3 只不动的史莱姆当靶子，被打死后约 2 秒在原位重新生成。
 ## 调试面板（boomerang_test_panel.gd）显示识别状态和事件日志，并可在运行时调参。
-## 入口：标题菜单 PRACTICE；Esc 暂停菜单的 TITLE 回标题。
+## 入口：和正式游戏分开，命令行 `AARPG-Gesture.exe -- --practice`（根目录 run_practice.bat），
+## 或在编辑器里直接运行本场景；Esc 暂停菜单只有 RESUME / QUIT。
+## G 键切换"手影"（hand_ghost.gd）：OFF / HAND / CAMERA。
 
-const TITLE_SCENE : String = "res://ui/title/title_scene.tscn"
 const SLIME : PackedScene = preload( "res://enemies/slime/slime.tscn" )
 ## 靶子的固定位置（世界坐标）：避开左右两侧的调试面板，离主角都有一段距离
 const TARGET_HOMES : Array[Vector2] = [
@@ -38,6 +39,11 @@ func _ready() -> void:
 	controller.auto_attack_enabled = false
 	controller.enabled = true
 	controller.reset()
+
+	# 手影：画在地板之上、角色之下
+	var ghost := HandGhost.new()
+	ghost.name = "HandGhost"
+	add_child( ghost )
 
 	_targets.resize( TARGET_HOMES.size() )
 	for i in TARGET_HOMES.size():

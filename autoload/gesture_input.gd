@@ -40,6 +40,11 @@ var is_fist: bool = false
 var calibrated: bool = false
 var calibrating: bool = false
 
+## 最近一张画面包的纹理（还没收到过为 null）；练习场的 CAMERA 手影用
+var frame_texture: ImageTexture :
+	get:
+		return _texture
+
 var _udp := PacketPeerUDP.new()
 var _bound := false
 var _last_seq: int = -1

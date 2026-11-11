@@ -17,6 +17,7 @@ func add_player_instance() -> void:
 
 ## 满血、清零速度、回到初始状态，用于重新开始一局
 func reset_player() -> void:
+	player.reset_visuals()
 	player.hp = player.max_hp
 	player.velocity = Vector2.ZERO
 	player.direction = Vector2.ZERO

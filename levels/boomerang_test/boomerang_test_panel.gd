@@ -114,14 +114,14 @@ func _build_ui() -> void:
 	_params_label.add_theme_color_override( "default_color", COL_TEXT )
 	left.add_child( _params_label )
 
-	var right := _make_box( RIGHT_POS, Vector2( RIGHT_W, (LOG_LINES + 1 + 6) * LINE_H + 6 ) )
+	var right := _make_box( RIGHT_POS, Vector2( RIGHT_W, (LOG_LINES + 1 + 7) * LINE_H + 6 ) )
 	_log_label = _make_label( right )
 	_log_label.size = Vector2( RIGHT_W - 4, (LOG_LINES + 1) * LINE_H )
 	_help_label = _make_label( right )
 	_help_label.position.y = (LOG_LINES + 1) * LINE_H + 6
-	_help_label.size = Vector2( RIGHT_W - 4, 6 * LINE_H )
+	_help_label.size = Vector2( RIGHT_W - 4, 7 * LINE_H )
 	_help_label.add_theme_color_override( "font_color", COL_DIM )
-	_help_label.text = "[ ]  SELECT\n- =  ADJUST\n0  RESET ALL\nI  INFINITE PSI\nF1 PANEL  F3 RESCAN\nESC  MENU"
+	_help_label.text = "[ ]  SELECT\n- =  ADJUST\n0  RESET ALL\nI  INFINITE PSI\nG  GHOST\nF1 PANEL  F3 RESCAN\nESC  MENU"
 
 
 func _make_box( pos : Vector2, size : Vector2 ) -> ColorRect:
@@ -242,7 +242,14 @@ func _refresh_status() -> void:
 		"GUIDED %s" % ( "YES" if _controller.guided else "NO" ),
 		"PSI %d%%%s" % [ int( roundf( _controller.psi * 100.0 ) ), "  INF" if _controller.psi_infinite else "" ],
 		"DIST %s" % dist_text,
+		"GHOST %s" % _ghost_name(),
 	] )
+
+
+## 手影由练习场在 _ready 里创建（比本面板晚），所以每次现查
+func _ghost_name() -> String:
+	var g := get_parent().get_node_or_null( "HandGhost" ) as HandGhost
+	return g.mode_name() if g != null else "--"
 
 
 func _refresh_params() -> void:

@@ -62,6 +62,37 @@ def sample_path(points, u):
         d -= ln
 
 
+ROI = {"x": 370, "y": 0, "w": 270, "h": 480}  # 同 config.json 的默认预设 right
+FRAME_SIZE = [640, 480]
+HAND_WIDTH = 0.5  # 手宽约占操作框宽的一半
+
+
+def fake_contour(cx, cy, gesture, roi=ROI):
+    """合成手形多边形（操作框内归一化坐标），以掌心 (cx, cy) 为中心。
+    张开：带 5 根手指的星形；握拳：近似圆的 12 边形。"""
+    import math
+    w, h = roi["w"], roi["h"]
+    r = HAND_WIDTH * 0.5 * w * 0.55  # 掌心圆半径（像素）
+    pts = []
+    if gesture == "palm":
+        # 5 根手指在 -150°..-30° 之间展开（朝上），指尖半径 ~2.6r，指根处回到 r
+        tips = [math.radians(a) for a in (-160, -125, -90, -55, -20)]
+        for i, a in enumerate(tips):
+            pts.append((a - 0.12, r))
+            pts.append((a, r * (2.0 + 0.6 * math.sin(math.pi * i / 4))))
+            pts.append((a + 0.12, r))
+        pts.append((math.radians(60), r))
+        pts.append((math.radians(120), r))
+    else:
+        for k in range(12):
+            pts.append((2 * math.pi * k / 12, r * 1.05))
+    out = []
+    for a, rad in sorted(pts, key=lambda p: p[0] % (2 * math.pi)):
+        out.append([round(min(max(cx + rad * math.cos(a) / w, 0.0), 1.0), 3),
+                    round(min(max(cy + rad * math.sin(a) / h, 0.0), 1.0), 3)])
+    return out
+
+
 def listen_commands(sock, stop):
     sock.settimeout(0.2)
     while not stop.is_set():
@@ -122,7 +153,9 @@ def main():
               "cx": round(x, 4), "cy": round(y, 4), "px": round(x, 4), "py": round(y, 4),
               "open_ratio": OPEN_RATIO[gesture], "edge": False, "radius": 0.12 if hand else 0.0,
               "fps": 30.0, "proc_ms": 5.0,
-              "calibrated": calibrated, "calibrating": False}
+              "calibrated": calibrated, "calibrating": False,
+              "roi": [ROI["x"], ROI["y"], ROI["w"], ROI["h"]], "frame": FRAME_SIZE,
+              "contour": fake_contour(x, y, gesture) if hand else []}
         out.sendto(b"S" + json.dumps(st).encode("utf-8"), SEND_ADDR)
         if cv2 is not None and seq % 3 == 0:
             frame = make_frame(t)

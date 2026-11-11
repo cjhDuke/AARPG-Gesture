@@ -201,7 +201,10 @@ def run():
                      "px": round(px, 3), "py": round(py, 3),
                      "open_ratio": round(feats.open_ratio, 2), "edge": bool(feats.edge), "radius": round(feats.radius / w, 3),
                      "fps": round(fps, 1), "proc_ms": round(proc_ms, 2),
-                     "calibrated": segmenter.calibrated, "calibrating": segmenter.calibrating}
+                     "calibrated": segmenter.calibrated, "calibrating": segmenter.calibrating,
+                     # 手影用：操作框在整幅画面里的像素矩形、画面尺寸、手轮廓多边形（操作框内归一化）
+                     "roi": [int(v) for v in rect], "frame": [int(frame.shape[1]), int(frame.shape[0])],
+                     "contour": features.simplify_contour(feats.contour, w, h) if feats.palm else []}
             net.send_state(state)
             jpg = encode_stage(stage, frame, rect, seg, feats, cfg)
             if jpg:

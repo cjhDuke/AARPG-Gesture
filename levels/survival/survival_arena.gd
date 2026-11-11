@@ -15,6 +15,7 @@ var wave : int = 0
 var kills : int = 0
 var _ended : bool = false
 var _player : Player
+var _death_fx : DeathFx
 
 
 func _ready() -> void:
@@ -36,6 +37,7 @@ func _ready() -> void:
 
 
 func _free_level() -> void:
+	_clear_death_fx()
 	controller.release_player()
 	var camera : Camera2D = _player.get_node( "Camera2D" )
 	camera.top_level = false
@@ -45,6 +47,8 @@ func _free_level() -> void:
 
 ## 开始（或重新开始）一局
 func _start_run() -> void:
+	_clear_death_fx()
+	spawner.set_process( true )
 	wave_timer.stop()
 	spawner.clear()
 	for c in get_children():
@@ -84,9 +88,34 @@ func _on_wave_cleared() -> void:
 		wave_timer.start( WAVE_DELAY )
 
 
+## 主角死亡：先放死亡动效（慢动作 + 闪白 + 倒下 + 冒烟，见 death_fx.gd），播完再弹 GAME OVER 面板。
+## 期间停止刷怪、关掉手势 / 键盘操控（回旋镖随之收回）、禁用暂停菜单；
+## 主角 is_dead 且受击框已关，敌人不会再造成伤害
 func _on_player_died() -> void:
-	if not _ended:
-		_end_run( false )
+	if _ended:
+		return
+	_ended = true
+	wave_timer.stop()
+	spawner.set_process( false )
+	controller.enabled = false
+	PauseMenu.process_mode = Node.PROCESS_MODE_DISABLED
+	_death_fx = DeathFx.new()
+	add_child( _death_fx )
+	_death_fx.finished.connect( _on_death_fx_finished )
+	_death_fx.start( _player )
+
+
+func _on_death_fx_finished() -> void:
+	_end_run( false )
+
+
+## 结束死亡动效并恢复时间流速（重开、回标题、关卡释放时都会调用，可重复调用）
+func _clear_death_fx() -> void:
+	if is_instance_valid( _death_fx ):
+		_death_fx.cleanup()
+		_death_fx.queue_free()
+	_death_fx = null
+	Engine.time_scale = 1.0
 
 
 func _end_run( victory : bool ) -> void:

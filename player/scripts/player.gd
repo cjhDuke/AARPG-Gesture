@@ -126,6 +126,17 @@ func die() -> void:
 	hurt_box.monitoring = false
 	died.emit()
 	
+## 把死亡动效改过的外观复原（旋转、位置、透明度、可见性、状态机），重新开始一局时调用
+func reset_visuals() -> void:
+	effect_animation_player.stop()
+	state_machine.process_mode = Node.PROCESS_MODE_INHERIT
+	sprite_2d.rotation = 0.0
+	sprite_2d.position = Vector2( 0, -21 )
+	sprite_2d.modulate = Color.WHITE
+	modulate = Color.WHITE
+	visible = true
+
+
 func make_invulnerable( _duration : float = 1.0 ) -> void:
 	invulnerable = true
 	hurt_box.monitoring = false

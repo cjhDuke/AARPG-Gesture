@@ -1,7 +1,7 @@
 extends Node2D
 
 const START_LEVEL: String = "res://levels/survival/survival_arena.tscn"
-## 回旋镖练习场：主角站定、只练放回旋镖，调参用
+## 回旋镖练习场（命令行 `-- --practice` 时跳过标题直接进入，见 LevelManager.practice_mode）
 const PRACTICE_LEVEL: String = "res://levels/boomerang_test/boomerang_test.tscn"
 ## 标题背景的镜头位置（主角被隐藏，只借用它身上的 Camera2D）。
 ## x 取房间中心，y 比中心靠上，让顶部露出一截墙，看得出是个房间
@@ -24,7 +24,6 @@ const MENU_SLIDE_TIME := 0.4
 @onready var orbit_boomerang: TitleBoomerang = $CanvasLayer/Control/OrbitBoomerang
 @onready var menu: VBoxContainer = $CanvasLayer/Control/Menu
 @onready var button_start: Button = $CanvasLayer/Control/Menu/Button_start
-@onready var button_practice: Button = $CanvasLayer/Control/Menu/Button_practice
 @onready var button_quit: Button = $CanvasLayer/Control/Menu/Button_quit
 @onready var marker: TitleBoomerang = $CanvasLayer/Control/Menu/Marker
 @onready var audio_stream_player: AudioStreamPlayer = $AudioStreamPlayer
@@ -36,6 +35,10 @@ var _marker_placed: bool = false
 
 
 func _ready() -> void:
+	# 练习模式：不做任何标题的初始化（不暂停、不隐藏主角 / PlayerHud、不禁用 PauseMenu），直接换到练习场
+	if LevelManager.practice_mode:
+		get_tree().change_scene_to_file.call_deferred(PRACTICE_LEVEL)
+		return
 	get_tree().paused = true
 	# 从游戏里返回标题时，加载流程结束会取消暂停，这里重新暂停
 	LevelManager.level_loaded.connect( _pause_tree )
@@ -61,12 +64,11 @@ func setup_title_screen() -> void:
 	title_ui.visible = true
 
 	AudioManager.play_music(music)
-	button_start.pressed.connect(start_game.bind(START_LEVEL))
-	button_practice.pressed.connect(start_game.bind(PRACTICE_LEVEL))
+	button_start.pressed.connect(start_game)
 	button_quit.pressed.connect(quit_game)
 
 	# 竖排菜单：上下循环，左右也能在按钮间切换
-	var buttons: Array[Button] = [button_start, button_practice, button_quit]
+	var buttons: Array[Button] = [button_start, button_quit]
 	for i in buttons.size():
 		var button := buttons[i]
 		var prev_path := buttons[(i + buttons.size() - 1) % buttons.size()].get_path()
@@ -125,7 +127,7 @@ func _move_marker(button: Button) -> void:
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 
-func start_game(level_path: String) -> void:
+func start_game() -> void:
 	if _starting:
 		return
 	_starting = true
@@ -137,7 +139,7 @@ func start_game(level_path: String) -> void:
 	_marker_tween.tween_property(marker, "position:x", marker.position.x + MARKER_FLY_DISTANCE, MARKER_FLY_TIME) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	await _marker_tween.finished
-	LevelManager.load_new_level(level_path)
+	LevelManager.load_new_level(START_LEVEL)
 
 
 func quit_game() -> void:

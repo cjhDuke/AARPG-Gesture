@@ -85,24 +85,19 @@ anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
 offset_left = -60.0
-offset_top = 120.0
+offset_top = 142.0
 offset_right = 60.0
-offset_bottom = 204.0
+offset_bottom = 202.0
 grow_horizontal = 2
-theme_override_constants/separation = 6
+theme_override_constants/separation = 8
 
 [node name="Button_start" type="Button" parent="CanvasLayer/Control/Menu"]
-custom_minimum_size = Vector2(0, 24)
+custom_minimum_size = Vector2(0, 26)
 layout_mode = 2
 text = "START"
 
-[node name="Button_practice" type="Button" parent="CanvasLayer/Control/Menu"]
-custom_minimum_size = Vector2(0, 24)
-layout_mode = 2
-text = "PRACTICE"
-
 [node name="Button_quit" type="Button" parent="CanvasLayer/Control/Menu"]
-custom_minimum_size = Vector2(0, 24)
+custom_minimum_size = Vector2(0, 26)
 layout_mode = 2
 text = "QUIT"
 

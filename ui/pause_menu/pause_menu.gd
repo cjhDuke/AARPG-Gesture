@@ -18,6 +18,13 @@ func _ready() -> void:
 	button_resume.pressed.connect( hide_pause_menu )
 	button_title.pressed.connect( _on_title_pressed )
 	button_quit.pressed.connect( _on_quit_pressed )
+	# 练习模式没有标题可回：隐藏 TITLE，RESUME / QUIT 上下循环
+	if LevelManager.practice_mode:
+		button_title.visible = false
+		button_resume.focus_neighbor_top = button_quit.get_path()
+		button_resume.focus_neighbor_bottom = button_quit.get_path()
+		button_quit.focus_neighbor_top = button_resume.get_path()
+		button_quit.focus_neighbor_bottom = button_resume.get_path()
 
 
 func _unhandled_input(event: InputEvent) -> void:

@@ -211,5 +211,43 @@ class BackgroundTest(unittest.TestCase):
         self.assertFalse(seg.calibrated)
 
 
+class ContourSimplifyTest(unittest.TestCase):
+    """手影用的轮廓多边形：点数上限、归一化范围、状态包体积。"""
+
+    def setUp(self):
+        self.cfg = synth.load_cfg()
+        self.seg = synth.make_segmenter(self.cfg)
+
+    def contour_of(self, n_fingers):
+        res = self.seg.process(synth.draw_hand(n_fingers))
+        return features.extract(res.mask, self.cfg).contour
+
+    def test_limits_and_range(self):
+        for n in (0, 5):
+            poly = features.simplify_contour(self.contour_of(n), synth.W, synth.H)
+            self.assertGreaterEqual(len(poly), 3)
+            self.assertLessEqual(len(poly), 48)
+            for x, y in poly:
+                self.assertTrue(0.0 <= x <= 1.0 and 0.0 <= y <= 1.0, (x, y))
+                self.assertEqual(round(x, 3), x)
+
+    def test_point_cap_enforced(self):
+        # 很毛糙的圆：epsilon 初值下点数会很多，必须被压到 48 以内
+        c = np.int32([[[140 + 80 * np.cos(a) * (1 + 0.15 * np.sin(40 * a)),
+                        150 + 80 * np.sin(a) * (1 + 0.15 * np.sin(40 * a))]]
+                      for a in np.linspace(0, 2 * np.pi, 600, endpoint=False)])
+        poly = features.simplify_contour(c, 280, 360, eps_ratio=0.001)
+        self.assertLessEqual(len(poly), 48)
+
+    def test_empty(self):
+        self.assertEqual(features.simplify_contour(None, 280, 360), [])
+
+    def test_state_packet_small(self):
+        import json
+        poly = features.simplify_contour(self.contour_of(5), synth.W, synth.H)
+        st = {"seq": 1, "roi": [370, 0, 270, 480], "frame": [640, 480], "contour": poly}
+        self.assertLess(len(json.dumps(st)) + 600, 2000)  # 其余字段约 350 字节，单包远小于 8KB
+
+
 if __name__ == "__main__":
     unittest.main()
