@@ -17,10 +17,10 @@
   },
   "roi_index": 0,
   "roi_presets": [
-    {"name": "right", "x": 390, "y": 60, "w": 250, "h": 420},
-    {"name": "left", "x": 0, "y": 60, "w": 250, "h": 420},
-    {"name": "right-wide", "x": 300, "y": 60, "w": 340, "h": 420},
-    {"name": "left-wide", "x": 0, "y": 60, "w": 340, "h": 420}
+    {"name": "right", "x": 370, "y": 0, "w": 270, "h": 480},
+    {"name": "left", "x": 0, "y": 0, "w": 270, "h": 480},
+    {"name": "right-wide", "x": 300, "y": 0, "w": 340, "h": 480},
+    {"name": "left-wide", "x": 0, "y": 0, "w": 340, "h": 480}
   ],
   "record_max_seconds": 30.0,
   "calibration": {
@@ -38,7 +38,7 @@
     "blur_kernel": 5,
     "open_kernel": 5,
     "close_kernel": 9,
-    "min_area_ratio": 0.03
+    "min_area_ratio": 0.02
   },
   "tracking": {
     "dilate_kernel": 25,
