@@ -9,6 +9,10 @@ const WAVE_DELAY : float = 2.0
 const CHEST_POS := HandController.CENTER + Vector2( 0, 36 )
 ## 切关后横幅显示的时间（秒），之后才开始第一波
 const STAGE_BANNER_TIME : float = 1.5
+## 选中强化后到流程继续的停顿（秒）
+const UPGRADE_DONE_DELAY : float = 0.8
+const APPEAR_SOUND : AudioStream = preload( "res://levels/survival/upgrade_appear.wav" )
+const CHOOSE_SOUND : AudioStream = preload( "res://levels/survival/upgrade_choose.wav" )
 
 ## 每局开始（含重开）时发出，练习场面板用它把强化开关重新施加
 signal run_started
@@ -28,6 +32,8 @@ var _player : Player
 var _death_fx : DeathFx
 var loot : LootDropper
 var _chest : RewardChest
+## 强化三选一的台座（选择期间存在）
+var _altar : UpgradeAltar
 ## 这一波主角是否受过伤（决定宝箱里有没有药水）
 var _wave_hurt : bool = false
 ## 当前关的数据（StageData.get_stage）和图块地图节点
@@ -56,6 +62,7 @@ func _ready() -> void:
 	loot.controller = controller
 	add_child( loot )
 	loot.bag_changed.connect( hud.set_bag )
+	controller.upgrades_changed.connect( hud.set_upgrades )
 	hud.set_bag( 0, LootDropper.BAG_CAPACITY )
 	PauseMenu.bag_provider = _bag_info
 	PauseMenu.restart_handler = _start_run
@@ -184,14 +191,65 @@ func _on_chest_finished() -> void:
 		return
 	if wave >= _wave_total():
 		_advance_stage()
+	elif _wave_wants_upgrade():
+		_upgrade_then_next_wave()
 	else:
 		wave_timer.start( WAVE_DELAY )
 
 
-## 关卡之间的钩子：阶段 D 在这里插入"强化三选一"（场地上出现台座，主角走上去选）。
-## 在淡出之前调用；目前立即返回。
+## 关卡之间的钩子：在淡出之前调用。这一波标了 "upgrade" 就先做强化三选一（主角在场地上自由走动）。
 func _between_stages() -> void:
-	pass
+	if _wave_wants_upgrade():
+		await _choose_upgrade()
+
+
+## 这一波清完后是否要出强化选择（波次表的 "upgrade" 字段；全局最后一波不会走到这里，直接 VICTORY）
+func _wave_wants_upgrade() -> bool:
+	if wave < 1 or wave > _wave_total():
+		return false
+	return bool( _stage_data["waves"][wave - 1].get( "upgrade", false ) )
+
+
+## 强化选择完（或没有可选的）之后开下一波
+func _upgrade_then_next_wave() -> void:
+	var id := _run_id
+	await _choose_upgrade()
+	if id != _run_id or _ended or not is_inside_tree():
+		return
+	wave_timer.start( WAVE_DELAY )
+
+
+## 强化三选一：从没拥有的强化池里随机抽最多 3 个放台座，主角走上去停留选中。
+## 没有可选的就直接返回。重开 / 死亡 / 跳关时台座被清掉，这个协程不会再醒来（用 _run_id 判断）。
+## 选择期间场上没有敌人，主角照常能走动和放镖，不做限制（放镖无害）
+func _choose_upgrade() -> void:
+	var id := _run_id
+	var candidates : Array[String] = []
+	for u in Upgrades.pool_ids():
+		if not controller.has_upgrade( u ):
+			candidates.append( u )
+	if candidates.is_empty():
+		return
+	candidates.shuffle()
+	var picks : Array[String] = []
+	for i in mini( 3, candidates.size() ):
+		picks.append( candidates[i] )
+	hud.show_banner( "CHOOSE UPGRADE" )
+	_altar = UpgradeAltar.new()
+	_altar.player = _player
+	_altar.ids = picks
+	add_child( _altar )
+	PlayerManager.play_audio( APPEAR_SOUND )
+	var altar := _altar
+	var picked : String = await altar.chosen
+	if id != _run_id or _ended or not is_inside_tree():
+		return
+	controller.set_upgrade( picked, true )
+	altar.dismiss()
+	_altar = null
+	PlayerManager.play_audio( CHOOSE_SOUND )
+	Pickup.show_float_text( self, _player.global_position + Vector2( 0, -48 ), Upgrades.display_name( picked ) )
+	await get_tree().create_timer( UPGRADE_DONE_DELAY ).timeout
 
 
 ## 当前关清完且宝箱收走后：钩子 -> 淡出 -> 换关卡 -> 淡入 -> 横幅 -> 第一波。
@@ -207,10 +265,10 @@ func _advance_stage() -> void:
 
 func _advance_stage_flow() -> void:
 	var id := _run_id
-	controller.enabled = false
 	await _between_stages()
 	if id != _run_id or _ended or not is_inside_tree():
 		return
+	controller.enabled = false
 	await SceneTransition.fade_out()
 	if id != _run_id or _ended or not is_inside_tree():
 		return
@@ -267,7 +325,11 @@ func debug_clear_wave() -> void:
 
 ## 暂停菜单背包面板的内容
 func _bag_info() -> Dictionary:
+	var owned : Array[String] = []
+	for u in controller.owned_ids():
+		owned.append( Upgrades.display_name( u ) )
 	return {
+		"upgrades": owned,
 		"status": "STAGE %d  WAVE %d/%d   KILLS %d" % [ stage + 1, maxi( wave, 1 ), _wave_total(), kills ],
 		"rows": [
 			{ "region": Pickup.REGIONS[Pickup.Kind.APPLE], "name": "APPLE",
@@ -285,6 +347,9 @@ func _clear_rewards() -> void:
 	if is_instance_valid( _chest ):
 		_chest.queue_free()
 	_chest = null
+	if is_instance_valid( _altar ):
+		_altar.queue_free()
+	_altar = null
 	if loot != null:
 		loot.clear()
 

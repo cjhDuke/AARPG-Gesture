@@ -9,6 +9,7 @@ class_name EnemyStateStun extends EnemyState
 
 var _damage_position : Vector2
 var _direction : Vector2
+var _knock_mult : float = 1.0
 var _animation_finished : bool = false
 
 func init() ->void:
@@ -23,7 +24,7 @@ func enter() -> void:
 	_direction = enemy.global_position.direction_to( _damage_position )
 	
 	enemy.set_direction( _direction )
-	enemy.velocity = _direction * -knockback_speed
+	enemy.velocity = _direction * -knockback_speed * _knock_mult
 	
 	enemy.update_animation( anim_name )
 	enemy.animation_player.animation_finished.connect( _on_animation_finished )
@@ -49,6 +50,7 @@ func physics( _delta : float) -> EnemyState:
 
 func _on_enemy_damaged( hit_box : HitBox ) -> void:
 	_damage_position = hit_box.global_position
+	_knock_mult = hit_box.knockback_mult
 	state_machine.change_state( self )
 	
 

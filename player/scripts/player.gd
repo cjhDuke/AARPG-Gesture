@@ -6,8 +6,10 @@ var direction : Vector2 = Vector2.ZERO
 var invulnerable : bool = false
 ## 练习场调试用的无敌开关：为 true 时受击不掉血（正式游戏从不设置）
 var god_mode : bool = false
-var hp : int = 6
-var max_hp : int = 6
+## 基础血量上限（心之容器强化 +2，即一颗心）
+const BASE_MAX_HP : int = 6
+var hp : int = BASE_MAX_HP
+var max_hp : int = BASE_MAX_HP
 var is_dead : bool = false
 ## 为 false 时主角站桩：direction 恒为零，不会走动
 var can_move : bool = true

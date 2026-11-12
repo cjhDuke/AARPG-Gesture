@@ -34,6 +34,18 @@ const WALK_STOP_DIST : float = 4.0
 ## 依据：ChargeSpinHitBox 是半径 38 的圆，伤害 2；取略小于半径的值保证放出来能打到。
 ## ATTACK_COOLDOWN 是两次旋转斩起手之间的最短间隔（一次旋转约 0.31 秒）
 const ATTACK_RANGE : float = 34.0
+## 大回旋强化：旋转斩半径 38 -> 50，自动攻击触发距离相应加大
+const ATTACK_RANGE_WIDE : float = 44.0
+## 强化参数
+const POOL_DRAIN_FACTOR : float = 1.0 / 1.5
+const POOL_REGEN_FACTOR : float = 1.3
+const MAGNET_RANGE : float = 45.0
+## 冲击波（实验项）：光标离主角多近算"在主角身上"、耗念力、半径、伤害、击退倍率
+const SHOCK_CURSOR_DIST : float = 16.0
+const SHOCK_PSI_COST : float = 0.3
+const SHOCK_RADIUS : float = 50.0
+const SHOCK_DAMAGE : int = 1
+const SHOCK_KNOCKBACK : float = 2.5
 const ATTACK_COOLDOWN : float = 0.7
 
 ## 念力：不低于它才能起飞 / 重新抓住
@@ -50,6 +62,8 @@ const KEY_STEP : float = 80.0
 ## 操控状态变化时发出的简短英文事件（LAUNCH / REGRAB / RELEASE: ... / BLOCKED: ...），
 ## 给练习场面板的事件日志用
 signal control_event( text : String )
+## 已拥有的强化变化时发出（参数是按 Upgrades.LIST 顺序排列的 id 数组），HUD 图标行用
+signal upgrades_changed( ids : Array )
 
 ## ---------- 调参（普通变量，练习场面板运行时会改它们） ----------
 ## 走位时光标每秒最多移动的像素数
@@ -76,8 +90,13 @@ var blast_radius : float = 36.0
 var blast_damage : int = 2
 var blast_psi_cost : float = 0.15
 var blast_min_guided_time : float = 0.3
-## 念力爆破是强化解锁的技能，默认关闭；每局开始由 reset() -> reset_upgrades() 复位
+## 念力爆破是强化解锁的技能，默认关闭；由 has_upgrade("blast") 同步，每局开始 reset_upgrades() 复位
 var blast_enabled : bool = false
+## 自动攻击触发距离（大回旋强化时加大）
+var attack_range : float = ATTACK_RANGE
+## 已拥有的强化集合（id -> true）。放在控制器里的原因：念力、回旋镖起飞、自动攻击的参数都在这里，
+## 强化是"开关状态 -> 效果"，set_upgrade() 会把效果同步到各处，关闭时恢复；reset() 每局清空
+var upgrades : Dictionary = {}
 
 ## ---------- 开关（默认是正常游戏的行为；练习场面板会改） ----------
 ## false 时主角不走位，始终站定
@@ -147,9 +166,74 @@ func reset() -> void:
 	_update_hud()
 
 
-## 强化全部复位（后续新增的强化也加在这里）；reset() 会调用
+## 强化全部复位；reset() 会调用
 func reset_upgrades() -> void:
-	blast_enabled = false
+	upgrades.clear()
+	_apply_upgrades()
+	upgrades_changed.emit( owned_ids() )
+
+
+func has_upgrade( id : String ) -> bool:
+	return upgrades.get( id, false )
+
+
+## 按表顺序返回已拥有的强化 id
+func owned_ids() -> Array:
+	var r : Array = []
+	for id in Upgrades.all_ids():
+		if has_upgrade( id ):
+			r.append( id )
+	return r
+
+
+## 开 / 关一项强化（每项只能拥有一次，重复开 / 关无效果）
+func set_upgrade( id : String, on : bool ) -> void:
+	if on == has_upgrade( id ) or Upgrades.get_def( id ).is_empty():
+		return
+	if on:
+		upgrades[id] = true
+	else:
+		upgrades.erase( id )
+	_apply_upgrades()
+	upgrades_changed.emit( owned_ids() )
+
+
+## 把当前强化集合同步成实际效果（可重复调用；各项都是"由集合推出状态"，所以开关都可逆）
+func _apply_upgrades() -> void:
+	blast_enabled = has_upgrade( "blast" )
+	# 弹反：静态变量，复位时必须清掉
+	EnemyProjectile.parry_by_spin = has_upgrade( "parry" )
+	attack_range = ATTACK_RANGE_WIDE if has_upgrade( "wide_spin" ) else ATTACK_RANGE
+	if is_instance_valid( _player ):
+		var spin := _player.get_node_or_null( "StateMachine/ChargeAttack" ) as State_ChargeAttack
+		if spin != null:
+			spin.set_wide( has_upgrade( "wide_spin" ) )
+		# 心之容器：上限 +2（一颗心），新增的容量立即补满；关闭 / 重开时恢复上限
+		var want := Player.BASE_MAX_HP + ( 2 if has_upgrade( "heart" ) else 0 )
+		if want != _player.max_hp:
+			var diff := want - _player.max_hp
+			_player.max_hp = want
+			_player.hp = clampi( _player.hp + maxi( diff, 0 ), 0, want )
+			_player.update_hp( 0 )
+		_apply_to_boomerang( _abilities.boomerang_instance if _abilities != null and _abilities.has_boomerang() else null )
+
+
+## 回旋镖相关强化：沉重 / 吸附 / 冰霜；每次起飞和强化切换时对当前实例套用
+func _apply_to_boomerang( b : Boomerang ) -> void:
+	if b == null:
+		return
+	b.set_heavy( has_upgrade( "pierce" ) )
+	b.magnet_range = MAGNET_RANGE if has_upgrade( "magnet" ) else 18.0
+	b.frost = has_upgrade( "frost" )
+
+
+## 实际的念力每秒消耗 / 回复（念力池强化：持续时间 x1.5，回充 +30%）
+func _drain_rate() -> float:
+	return psi_drain * ( POOL_DRAIN_FACTOR if has_upgrade( "pool" ) else 1.0 )
+
+
+func _regen_rate() -> float:
+	return psi_regen * ( POOL_REGEN_FACTOR if has_upgrade( "pool" ) else 1.0 )
 
 
 ## 回复念力（amount 为 0-1 的比例，结果夹在 0-1），宝石 / 药水用
@@ -161,6 +245,8 @@ func add_psi( amount : float ) -> void:
 ## 关卡卸载时复原主角状态
 func release_player() -> void:
 	_shutdown_control()
+	# 主角是全局节点：强化效果（血量上限、旋转斩范围、弹反静态变量）不能带出本关
+	reset_upgrades()
 
 
 func _process( delta : float ) -> void:
@@ -219,12 +305,12 @@ func _process( delta : float ) -> void:
 	if psi_infinite:
 		psi = 1.0
 	elif guided:
-		psi = maxf( psi - psi_drain * delta, 0.0 )
+		psi = maxf( psi - _drain_rate() * delta, 0.0 )
 		if psi <= 0.0:
 			_need_open = true
 			_end_guided( "RELEASE: PSI EMPTY" )
 	else:
-		psi = minf( psi + psi_regen * delta, 1.0 )
+		psi = minf( psi + _regen_rate() * delta, 1.0 )
 
 	if guided:
 		_update_guided( delta, hand_mode )
@@ -263,6 +349,11 @@ func _try_start( by_hand : bool, rise : bool ) -> void:
 		return
 	if _abilities.has_boomerang():
 		return
+	# 冲击波（实验项）：手势握拳时光标就在主角身上，不放镖，放一圈念力冲击波
+	if by_hand and has_upgrade( "shockwave" ) 			and _cursor_pos.distance_to( _player.global_position ) <= SHOCK_CURSOR_DIST:
+		if rise:
+			_fire_shockwave()
+		return
 	var dir := _player.cardinal_direction
 	if by_hand:
 		# 朝光标方向起飞；光标就在主角身上时用主角朝向
@@ -273,8 +364,18 @@ func _try_start( by_hand : bool, rise : bool ) -> void:
 	b = _abilities.start_guided( dir )
 	if b == null:
 		return
+	_apply_to_boomerang( b )
 	_begin_guided( b, by_hand, false )
 	control_event.emit( "LAUNCH" )
+
+
+## 冲击波：耗 30% 念力，主角身上一圈念力爆炸（半径 50、伤害 1、强击退），之后要先张开再握拳
+func _fire_shockwave() -> void:
+	if not psi_infinite:
+		psi = maxf( psi - SHOCK_PSI_COST, 0.0 )
+	_need_open = true
+	PsiBlast.spawn( _player.get_parent(), _player.global_position + Vector2( 0, -12 ), SHOCK_RADIUS, SHOCK_DAMAGE, SHOCK_KNOCKBACK )
+	control_event.emit( "SHOCKWAVE" )
 
 
 ## 正在操控：判断是否该松手（张开 / 手丢失 / 松开按键）
@@ -417,7 +518,7 @@ func _update_auto_attack() -> void:
 	if target == null:
 		return
 	var to_enemy := target.global_position - _player.global_position
-	if to_enemy.length() >= ATTACK_RANGE:
+	if to_enemy.length() >= attack_range:
 		return
 	_attack_cd = ATTACK_COOLDOWN
 	_swing()

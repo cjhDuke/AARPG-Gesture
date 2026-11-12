@@ -143,7 +143,7 @@ func _touched_by_boomerang() -> bool:
 	for c in parent.get_children():
 		if c is Boomerang and c.state != Boomerang.State.INACTIVE \
 				and c.visible and not c.is_queued_for_deletion():
-			if ( c.global_position + Boomerang.SPRITE_OFFSET ).distance_to( my_center ) <= BOOMERANG_DIST:
+			if ( c.global_position + Boomerang.SPRITE_OFFSET ).distance_to( my_center ) <= maxf( BOOMERANG_DIST, c.magnet_range ):
 				return true
 	return false
 

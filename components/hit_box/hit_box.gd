@@ -7,6 +7,9 @@ var ignores_stun_invulnerability : bool = false
 ## 为 true 时无视盾牌格挡（炸弹爆炸）
 var unblockable : bool = false
 
+## 击退倍率（受击硬直里的击退速度乘它；大回旋、冲击波用）
+var knockback_mult : float = 1.0
+
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
 	area_entered.connect( _on_area_entered )

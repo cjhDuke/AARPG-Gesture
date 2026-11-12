@@ -7,7 +7,19 @@ const TRAIL_MAX_POINTS := 12
 ## 精灵相对节点的偏移（场景里 Sprite2D 在 (0,-16)）
 const SPRITE_OFFSET := Vector2( 0, -16 )
 
+## 冰霜尾迹：减速时长（秒）、拖尾点离敌人多近算扫到（像素）
+const FROST_TIME : float = 2.0
+const FROST_TRAIL_DIST : float = 14.0
+## 沉重回旋镖（穿透强化）：伤害加成和体积倍率
+const HEAVY_BONUS : int = 1
+const HEAVY_SCALE : float = 1.3
+
 var player : Player
+## 强化开关（由 HandController 在每次起飞 / 切换强化时设置）
+var frost : bool = false
+## 掉落物被吸附的距离（精灵中心到掉落物图标中心，像素）；吸附强化加大
+var magnet_range : float = 18.0
+var _heavy : bool = false
 var direction : Vector2
 var speed : float = 0
 var state
@@ -62,6 +74,8 @@ func _physics_process(delta: float) -> void:
 
 	if state == State.GUIDED or state == State.RETURN:
 		_push_trail_point()
+		if frost:
+			_frost_sweep()
 
 	var speed_ratio = speed / max_speed
 	audio.pitch_scale = speed_ratio * 0.75 + 0.75
@@ -114,6 +128,33 @@ func regrab() -> bool:
 	_target = global_position
 	state = State.GUIDED
 	return true
+
+
+## 沉重回旋镖开 / 关：伤害 +1、精灵和判定放大约 1.3 倍（缩放子节点自己，位置偏移不变）
+func set_heavy( on : bool ) -> void:
+	if on == _heavy:
+		return
+	_heavy = on
+	var k := HEAVY_SCALE if on else 1.0
+	var hb : HitBox = $HitBox
+	hb.damage = 1 + ( HEAVY_BONUS if on else 0 )
+	$Sprite2D.scale = Vector2( k, k )
+	$HitBox/CollisionShape2D2.scale = Vector2( k, k )
+	$Area2D/CollisionShape2D.scale = Vector2( k, k )
+
+
+## 冰霜尾迹：拖尾点 FROST_TRAIL_DIST 以内的敌人减速
+func _frost_sweep() -> void:
+	var parent := get_parent()
+	if parent == null:
+		return
+	for c in parent.get_children():
+		if c is Enemy and not c.spawning and c.hp > 0 and not c.is_queued_for_deletion():
+			var p : Vector2 = c.global_position + Vector2( 0, -8 )
+			for i in _trail.get_point_count():
+				if _trail.get_point_position( i ).distance_to( p ) <= FROST_TRAIL_DIST:
+					c.apply_slow( FROST_TIME )
+					break
 
 
 func _make_trail() -> void:

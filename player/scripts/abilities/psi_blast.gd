@@ -23,18 +23,19 @@ var _sprite : Sprite2D
 
 
 ## 在 world_pos 生成一次爆破，加到 parent 下
-static func spawn( parent : Node, world_pos : Vector2, radius : float, damage : int ) -> PsiBlast:
+static func spawn( parent : Node, world_pos : Vector2, radius : float, damage : int, knockback : float = 1.0 ) -> PsiBlast:
 	var blast := PsiBlast.new()
 	blast.add_to_group( "loot_fx" )
 	blast.z_index = 5
 	parent.add_child( blast )
 	blast.global_position = world_pos
-	blast._setup( radius, damage )
+	blast._setup( radius, damage, knockback )
 	return blast
 
 
-func _setup( radius : float, damage : int ) -> void:
+func _setup( radius : float, damage : int, knockback : float ) -> void:
 	_hit_box = HitBox.new()
+	_hit_box.knockback_mult = knockback
 	_hit_box.damage = damage
 	_hit_box.ignores_stun_invulnerability = true
 	_hit_box.collision_layer = 0

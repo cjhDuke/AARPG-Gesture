@@ -20,7 +20,11 @@ var player : Player
 var invulnerable : bool = false
 ## 正处于受击硬直（EnemyStateStun 置位）；用来区分硬直无敌和淡入 / 死亡无敌
 var stunned : bool = false
+## 移动速度倍率（冰霜减速时为 0.5）；在 _physics_process 里对所有怪统一生效
+var speed_scale : float = 1.0
 var _is_defeated : bool = false
+var _slow_left : float = 0.0
+var _slow_base_tint : Color = Color.WHITE
 ## 正在淡入生成中，状态脚本据此暂缓开启攻击判定
 var spawning : bool = false
 
@@ -51,7 +55,15 @@ func _process(_delta):
 func _physics_process(_delta):
 	if _is_defeated:
 		return
-	move_and_slide()
+	_update_slow( _delta )
+	if speed_scale != 1.0:
+		# 只缩放这一步的位移，状态脚本里累加的速度（硬直减速等）保持原值
+		var v := velocity
+		velocity = v * speed_scale
+		move_and_slide()
+		velocity = v
+	else:
+		move_and_slide()
 
 
 func set_direction( _new_direction : Vector2 ) -> bool:
@@ -92,11 +104,35 @@ func _take_damage( hit_box : HitBox ) ->void:
 	if can_block( hit_box ):
 		on_blocked( hit_box )
 		return
+	var src := hit_box.get_parent()
+	if src is Boomerang and src.frost:
+		apply_slow( Boomerang.FROST_TIME )
 	hp -= hit_box.damage
 	if hp > 0:
 		enemy_damaged.emit( hit_box )
 	else:
 		enemy_destroyed.emit( hit_box )
+
+
+## 减速 seconds 秒（倍率 factor），期间染成浅蓝；重复施加只刷新时间
+func apply_slow( seconds : float, factor : float = 0.5 ) -> void:
+	if _is_defeated:
+		return
+	if _slow_left <= 0.0:
+		_slow_base_tint = sprite_2d.self_modulate
+		sprite_2d.self_modulate = _slow_base_tint * Color( 0.65, 0.85, 1.3 )
+	speed_scale = factor
+	_slow_left = maxf( _slow_left, seconds )
+
+
+func _update_slow( delta : float ) -> void:
+	if _slow_left <= 0.0:
+		return
+	_slow_left -= delta
+	if _slow_left <= 0.0:
+		_slow_left = 0.0
+		speed_scale = 1.0
+		sprite_2d.self_modulate = _slow_base_tint
 
 
 ## 这次伤害能否被挡住（盾牌哥布林重写）；挡住则不掉血、不进硬直

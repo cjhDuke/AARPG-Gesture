@@ -19,7 +19,13 @@ const BAG_POS := Vector2( 364, 34 )
 const BAG_STEP : float = 14.0
 const BAG_ICON_REGION := Rect2( 200, 8, 16, 16 )
 
+## 已拥有强化的图标行（左下角状态行左边）：左上角位置、图标大小和间距
+const UPGRADE_POS := Vector2( 4, 252 )
+const UPGRADE_ICON : float = 12.0
+const UPGRADE_STEP : float = 14.0
+
 var _banner_tween : Tween
+var _upgrade_icons : Array[Control] = []
 var _bag_icons : Array[TextureRect] = []
 
 
@@ -55,6 +61,18 @@ func set_bag( count : int, capacity : int ) -> void:
 	for i in _bag_icons.size():
 		_bag_icons[i].visible = i < capacity
 		_bag_icons[i].modulate = Color.WHITE if i < count else Color( 0, 0, 0, 0.45 )
+
+
+## 已拥有的强化用小图标排成一行
+func set_upgrades( ids : Array ) -> void:
+	for c in _upgrade_icons:
+		c.queue_free()
+	_upgrade_icons.clear()
+	for i in ids.size():
+		var icon := Upgrades.Icon.new( ids[i], UPGRADE_ICON )
+		icon.position = UPGRADE_POS + Vector2( UPGRADE_STEP * i, 0 )
+		$Root.add_child( icon )
+		_upgrade_icons.append( icon )
 
 
 func show_banner( text : String ) -> void:

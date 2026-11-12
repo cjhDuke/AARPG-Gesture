@@ -9,6 +9,12 @@ class_name State_ChargeAttack extends State
 ## 直接放的旋转斩期间主角是否无敌（蓄力版始终无敌）
 @export var spin_invulnerable : bool = false
 
+## 大回旋强化：判定半径 38 -> 50，击退倍率
+const WIDE_SCALE : float = 50.0 / 38.0
+const WIDE_KNOCKBACK : float = 1.6
+
+var _fx_base_scale : Vector2
+var _fx_base_known : bool = false
 var timer : float = 0.0
 var walking : bool = false
 var is_attacking : bool = false
@@ -134,6 +140,17 @@ func charge_complete() -> void:
 	gpu_particles_2d.explosiveness = 0
 	particles.initial_velocity_min = 10
 	particles.initial_velocity_max = 30
+
+
+## 大回旋开 / 关：放大旋转斩的判定圆和特效，加强击退（缩放碰撞体自身，位置不变）
+func set_wide( on : bool ) -> void:
+	if not _fx_base_known:
+		_fx_base_scale = spin_effect_sprite_2d.scale
+		_fx_base_known = true
+	var k := WIDE_SCALE if on else 1.0
+	charge_spin_hit_box.get_node( "CollisionShape2D" ).scale = Vector2( k, k )
+	charge_spin_hit_box.knockback_mult = WIDE_KNOCKBACK if on else 1.0
+	spin_effect_sprite_2d.scale = _fx_base_scale * k
 
 
 func play_audio( _audio : AudioStream ) -> void:

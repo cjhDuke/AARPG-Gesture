@@ -7,7 +7,7 @@ const TITLE_SCENE : String = "res://ui/title/title_scene.tscn"
 const ITEMS_TEXTURE : Texture2D = preload( "res://levels/survival/pickups/items.png" )
 ## 有背包面板时，面板和按钮列各自的左边缘（相对屏幕中心的 x 偏移）及面板尺寸
 const BAG_PANEL_X : float = -150.0
-const BAG_PANEL_SIZE := Vector2( 156, 136 )
+const BAG_PANEL_SIZE := Vector2( 156, 172 )
 const BUTTONS_X_WITH_BAG : float = 30.0
 const BUTTONS_X_CENTERED : float = -60.0
 const BUTTONS_WIDTH : float = 120.0
@@ -24,7 +24,7 @@ signal hidden
 @onready var button_quit: Button = %Button_Quit
 
 var is_paused : bool = false
-## 返回背包内容：{ "status": String, "rows": Array[{ "region": Rect2, "name": String, "value": String, "note": String }] }
+## 返回背包内容：{ "upgrades": Array[String]（可选，已拥有强化的显示名）, "status": String, "rows": Array[{ "region": Rect2, "name": String, "value": String, "note": String }] }
 var bag_provider : Callable
 ## 重开当前关卡（菜单已收起、游戏已取消暂停后调用）
 var restart_handler : Callable
@@ -32,6 +32,7 @@ var restart_handler : Callable
 var _bag_panel : Control
 var _bag_rows : VBoxContainer
 var _bag_status : Label
+var _bag_upgrades : Label
 
 
 func _ready() -> void:
@@ -134,6 +135,11 @@ func _build_bag_panel() -> void:
 	_bag_rows.add_theme_constant_override( "separation", 3 )
 	_bag_rows.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child( _bag_rows )
+	# 已拥有的强化：一段自动换行的小字，没有强化时隐藏
+	_bag_upgrades = _make_label( "", 8, Color( 0.6, 1.0, 0.7 ) )
+	_bag_upgrades.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_bag_upgrades.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child( _bag_upgrades )
 	_bag_status = _make_label( "", 8, Color( 0.75, 0.8, 0.85 ) )
 	_bag_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child( _bag_status )
@@ -166,6 +172,9 @@ func _fill_bag( info : Dictionary ) -> void:
 		text.add_child( _make_label( str( row["note"] ), 8, Color( 0.65, 0.68, 0.72 ) ) )
 		line.add_child( text )
 		_bag_rows.add_child( line )
+	var ups : Array = info.get( "upgrades", [] )
+	_bag_upgrades.visible = not ups.is_empty()
+	_bag_upgrades.text = "UPGRADES: " + ", ".join( PackedStringArray( ups ) ) if not ups.is_empty() else ""
 	_bag_status.text = str( info.get( "status", "" ) )
 
 
