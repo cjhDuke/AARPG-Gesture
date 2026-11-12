@@ -76,7 +76,9 @@ func _current_info() -> Array:
 	if not _gi.connected:
 		return ["CAMERA OFFLINE", COL_WARN, true]
 	if _gi.calibrating:
-		return ["SCANNING BACKGROUND", COL_SCAN, true]
+		if _gi.calib_countdown > 0:
+			return ["HAND OUT  %d" % _gi.calib_countdown, COL_SCAN, true]
+		return ["SCANNING - HAND OUT", COL_SCAN, true]
 	if not _gi.calibrated:
 		return ["HAND OUT, PRESS F3", COL_WARN, true]
 	# 暂停（标题、暂停菜单、结算面板）时手势不控制菜单，只保留上面的状态类提示

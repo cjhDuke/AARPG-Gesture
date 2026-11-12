@@ -1,11 +1,12 @@
 """假的识别端：不开摄像头，按脚本向 Godot 发状态包和（可选）画面包，用于联调。
 
-用法：python fake_sender.py [--script demo|idle|uncal] [--duration 秒]
+用法：python fake_sender.py [--script demo|idle|uncal|calib] [--duration 秒]
 
 脚本：
   demo   张开手沿矩形轨迹移动 -> 握拳并移动 -> 张开 -> 手消失 1 秒 -> 重复
   idle   已标定、操作框内没有手
   uncal  未标定（calibrated=false，没有手势）
+  calib  标定流程循环：倒计时 3、2、1（各 1 秒）-> 采集 1.5 秒 -> 已标定并播放 demo 约 8 秒
 状态包字段见 docs/ai/gesture-protocol.md。
 """
 import argparse
@@ -34,6 +35,7 @@ DEMO = [
 ]
 IDLE = [(1.0, "none", [(0.5, 0.5)])]
 UNCAL = [(1.0, "none", [(0.5, 0.5)])]
+CALIB_COUNTDOWN, CALIB_TIME = 3.0, 4.5   # calib 脚本：倒计时秒数、整个标定阶段秒数
 OPEN_RATIO = {"palm": 2.9, "fist": 1.7, "none": 0.0}
 
 
@@ -120,10 +122,10 @@ def make_frame(t):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--script", choices=["demo", "idle", "uncal"], default="demo")
+    ap.add_argument("--script", choices=["demo", "idle", "uncal", "calib"], default="demo")
     ap.add_argument("--duration", type=float, default=0)
     args = ap.parse_args()
-    script = {"demo": DEMO, "idle": IDLE, "uncal": UNCAL}[args.script]
+    script = {"demo": DEMO, "idle": IDLE, "uncal": UNCAL, "calib": DEMO}[args.script]
     calibrated = args.script != "uncal"
 
     cmd_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -140,12 +142,23 @@ def main():
         t = now - start
         if args.duration and t >= args.duration:
             break
-        pos = t % total
+        calibrating, countdown = False, 0
+        if args.script == "calib":  # 每轮先走一遍标定：倒计时 3、2、1，再采集 1.5 秒
+            phase = t % (CALIB_TIME + total)
+            if phase < CALIB_TIME:
+                calibrating = True
+                countdown = int(-(-(CALIB_COUNTDOWN - phase) // 1)) if phase < CALIB_COUNTDOWN else 0
+                t_demo = 0.0
+            else:
+                t_demo = phase - CALIB_TIME
+        else:
+            t_demo = t
+        pos = t_demo % total
         for dur, gesture, path in script:
             if pos < dur:
                 break
             pos -= dur
-        hand = gesture != "none"
+        hand = gesture != "none" and not calibrating
         x, y = sample_path(path, pos / dur)
         seq += 1
         st = {"seq": seq, "t_ms": now * 1000, "hand": hand, "gesture": gesture,
@@ -153,7 +166,8 @@ def main():
               "cx": round(x, 4), "cy": round(y, 4), "px": round(x, 4), "py": round(y, 4),
               "open_ratio": OPEN_RATIO[gesture], "edge": False, "radius": 0.12 if hand else 0.0,
               "fps": 30.0, "proc_ms": 5.0,
-              "calibrated": calibrated, "calibrating": False,
+              "calibrated": calibrated and not calibrating, "calibrating": calibrating,
+              "calib_countdown": countdown,
               "roi": [ROI["x"], ROI["y"], ROI["w"], ROI["h"]], "frame": FRAME_SIZE,
               "contour": fake_contour(x, y, gesture) if hand else []}
         out.sendto(b"S" + json.dumps(st).encode("utf-8"), SEND_ADDR)
