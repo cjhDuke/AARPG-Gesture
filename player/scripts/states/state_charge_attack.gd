@@ -4,6 +4,10 @@ class_name State_ChargeAttack extends State
 @export var move_speed : float = 80.0
 @export var sfx_charged : AudioStream
 @export var sfx_spin : AudioStream
+## 为 true 时一进入本状态就直接放旋转斩，不用按住蓄力（手引生存的普通攻击就是它）
+@export var instant : bool = true
+## 直接放的旋转斩期间主角是否无敌（蓄力版始终无敌）
+@export var spin_invulnerable : bool = false
 
 var timer : float = 0.0
 var walking : bool = false
@@ -29,6 +33,10 @@ func enter() -> void:
 	timer = charge_duration
 	is_attacking = false
 	walking = false
+	if instant:
+		timer = 0.0
+		charge_attack()
+		return
 	charge_hit_box.monitoring = true
 	gpu_particles_2d.emitting = true
 	gpu_particles_2d.amount = 4
@@ -95,7 +103,8 @@ func charge_attack() -> void:
 	spin_effect_sprite_2d.visible = true
 	spin_animation_player.play("spin")
 	var _duration : float = player.animation_player.current_animation_length
-	player.make_invulnerable(_duration)
+	if not instant or spin_invulnerable:
+		player.make_invulnerable(_duration)
 	charge_spin_hit_box.monitoring = true
 	await get_tree().create_timer(_duration * 0.875).timeout
 	if state_machine.current_state == self and player.is_dead == false:

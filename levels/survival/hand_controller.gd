@@ -30,11 +30,11 @@ const PSI_BAR_MIN_Y : float = 12.0
 const WALK_START_DIST : float = 10.0
 const WALK_STOP_DIST : float = 4.0
 
-## 自动挥剑：敌人（原点）到主角（原点）的距离小于它就挥剑。
-## 依据：AttackHitBox 圆半径 20、敌人受击圆在其原点上方 7 像素；
-## 无界面实测上下左右四个方向、敌人静止在 20 / 30 / 35 像素处，都能被命中（距离 >35 未测）。
-const ATTACK_RANGE : float = 36.0
-const ATTACK_COOLDOWN : float = 0.32
+## 自动攻击（旋转斩，一圈都打得到，不看朝向）：敌人（原点）到主角（原点）的距离小于它就放。
+## 依据：ChargeSpinHitBox 是半径 38 的圆，伤害 2；取略小于半径的值保证放出来能打到。
+## ATTACK_COOLDOWN 是两次旋转斩起手之间的最短间隔（一次旋转约 0.31 秒）
+const ATTACK_RANGE : float = 34.0
+const ATTACK_COOLDOWN : float = 0.7
 
 ## 念力：不低于它才能起飞 / 重新抓住
 const PSI_START_MIN : float = 0.3
@@ -383,7 +383,7 @@ func _update_cursor( hand_mode : bool ) -> void:
 	_cursor.global_position = _cursor_pos
 
 
-# ---------- 自动挥剑 ----------
+# ---------- 自动攻击（旋转斩） ----------
 
 func _update_auto_attack() -> void:
 	if _attack_cd > 0.0:
@@ -398,9 +398,7 @@ func _update_auto_attack() -> void:
 	if to_enemy.length() >= ATTACK_RANGE:
 		return
 	_attack_cd = ATTACK_COOLDOWN
-	var dir := _cardinal( to_enemy )
-	_player.face( dir )
-	_swing( dir )
+	_swing()
 
 
 ## 最近的、已经淡入完成且活着的敌人
@@ -416,18 +414,10 @@ func _nearest_enemy() -> Enemy:
 	return best
 
 
-func _cardinal( v : Vector2 ) -> Vector2:
-	if absf( v.x ) > absf( v.y ):
-		return Vector2.RIGHT if v.x > 0.0 else Vector2.LEFT
-	return Vector2.DOWN if v.y > 0.0 else Vector2.UP
-
-
-## 注入 attack 按下，下一帧松开：状态机里就是一次普通攻击
-func _swing( dir : Vector2 ) -> void:
+## 注入 attack 按下，下一帧松开：状态机里就是一次旋转斩（State_ChargeAttack.instant）
+func _swing() -> void:
 	_send_attack( true )
 	await get_tree().process_frame
-	# 走路时蓄力状态可能把朝向改回走路方向，松开前再校正一次
-	_player.face( dir )
 	_send_attack( false )
 
 
