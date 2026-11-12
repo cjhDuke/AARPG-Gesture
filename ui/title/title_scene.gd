@@ -1,8 +1,6 @@
 extends Node2D
 
 const START_LEVEL: String = "res://levels/survival/survival_arena.tscn"
-## 练习场 = 正式关卡 + 调试面板（命令行 `-- --practice` 时跳过标题直接进入，见 LevelManager.practice_mode）
-const PRACTICE_LEVEL: String = "res://levels/survival/survival_arena.tscn"
 ## 标题背景的镜头位置（主角被隐藏，只借用它身上的 Camera2D）。
 ## x 取房间中心，y 比中心靠上，让顶部露出一截墙，看得出是个房间
 const CAMERA_POS := Vector2(256, 112)
@@ -35,10 +33,6 @@ var _marker_placed: bool = false
 
 
 func _ready() -> void:
-	# 练习模式：不做任何标题的初始化（不暂停、不隐藏主角 / PlayerHud、不禁用 PauseMenu），直接换到练习场
-	if LevelManager.practice_mode:
-		get_tree().change_scene_to_file.call_deferred(PRACTICE_LEVEL)
-		return
 	get_tree().paused = true
 	# 从游戏里返回标题时，加载流程结束会取消暂停，这里重新暂停
 	LevelManager.level_loaded.connect( _pause_tree )
@@ -52,13 +46,7 @@ func _ready() -> void:
 	menu.visible = false
 	marker.visible = false
 
-	LevelManager.level_load_started.connect(exit_title_screen)
-
-	# 从游戏里返回标题：不再播开场 splash，直接进标题菜单
-	if LevelManager.title_seen:
-		setup_title_screen()
-	else:
-		splash_screen.finished.connect(setup_title_screen)
+	splash_screen.finished.connect(setup_title_screen)
 
 
 func setup_title_screen() -> void:

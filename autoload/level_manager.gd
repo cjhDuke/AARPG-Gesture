@@ -7,8 +7,7 @@ signal TileMapBoundsChanged(bounds: Array[Vector2])
 
 var current_tilemap_bounds: Array[Vector2]
 var is_loading_level: bool = false
-## 命令行用户参数 `-- --practice`：直接进练习场（正式关卡 + 调试面板，跳过 splash 和标题），暂停菜单不显示 TITLE
-var practice_mode: bool = OS.get_cmdline_user_args().has("--practice")
+var practice_mode: bool = false
 ## 本次运行已经看过开场 splash：从游戏里回标题时跳过它，直接显示标题菜单
 var title_seen: bool = false
 

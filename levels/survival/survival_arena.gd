@@ -74,12 +74,6 @@ func _ready() -> void:
 	wave_timer.timeout.connect( _begin_wave )
 	hud.retry_pressed.connect( _on_retry_pressed )
 	hud.title_pressed.connect( _on_title_pressed )
-	if LevelManager.practice_mode:
-		# 练习场没有标题可回；调试面板在 _start_run 之前创建，才能接到第一局的 run_started
-		hud.title_button.visible = false
-		var panel := PracticePanel.new()
-		panel.name = "PracticePanel"
-		add_child( panel )
 	_start_run()
 
 
@@ -107,9 +101,11 @@ func _start_run() -> void:
 		if c is Boomerang:
 			c.queue_free()
 	_run_id += 1
+	# 只有打断了自己的切关转场时才复位遮罩；关卡刚加载的第一局不能动转场，
+	# 否则会打断 LevelManager.load_new_level 的淡入
+	if _stage_changing:
+		SceneTransition.reset()
 	_stage_changing = false
-	# 如果是在切关淡出 / 淡入过程中重开的，旧协程不会再醒来收尾，这里把画面恢复成完全显示
-	SceneTransition.reset()
 	_load_stage( 0 )
 	wave = 0
 	kills = 0
@@ -340,8 +336,9 @@ func debug_goto_stage( n : int ) -> void:
 	if _ended:
 		return
 	_run_id += 1
+	if _stage_changing:
+		SceneTransition.reset()
 	_stage_changing = false
-	SceneTransition.reset()
 	controller.enabled = true
 	wave_timer.stop()
 	_clear_rewards()

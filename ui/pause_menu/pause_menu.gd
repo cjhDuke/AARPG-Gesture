@@ -84,8 +84,6 @@ func _refresh() -> void:
 	if has_bag:
 		_fill_bag( bag_provider.call() )
 	button_restart.visible = restart_handler.is_valid()
-	# 练习模式没有标题可回
-	button_title.visible = not LevelManager.practice_mode
 	var x := BUTTONS_X_WITH_BAG if has_bag else BUTTONS_X_CENTERED
 	button_box.offset_left = x
 	button_box.offset_right = x + BUTTONS_WIDTH
