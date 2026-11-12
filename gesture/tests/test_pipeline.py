@@ -66,6 +66,34 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(f.gesture, "palm", f.open_ratio)
         self.assertLess(f.far[1], 190)  # 最远点在手指上，不在小臂上
 
+    def test_palm_stays_on_hand_when_forearm_is_thicker(self):
+        """小臂越往下越粗、最粗处比拳头还粗：掌心仍应落在拳头上，不跑到小臂上。"""
+        img = synth.canvas()
+        cv2.fillPoly(img, [np.int32([(128, 120), (172, 120), (205, 359), (95, 359)])], synth.SKIN)
+        cv2.circle(img, (150, 110), 40, synth.SKIN, -1)
+        res, f = self.run_pipeline(img)
+        self.assertAlmostEqual(f.palm[0], 150, delta=10)
+        self.assertLess(f.palm[1], 135, f.palm)
+        self.assertEqual(f.gesture, "fist", f.open_ratio)
+
+    def test_closed_fingers_open_hand_is_palm(self):
+        """手指并拢的张开手（没有指缝，张开度只有 2.4 左右）也要判成张开。"""
+        img = synth.canvas()
+        cv2.circle(img, (140, 220), 45, synth.SKIN, -1)
+        cv2.rectangle(img, (105, 112), (175, 220), synth.SKIN, -1)
+        res, f = self.run_pipeline(img)
+        self.assertGreater(f.open_ratio, self.cfg["features"]["palm_min_ratio"])
+        self.assertLess(f.open_ratio, 2.6)
+        self.assertEqual(f.gesture, "palm", f.open_ratio)
+
+    def test_fingers_clipped_by_top_is_not_fist(self):
+        """指尖伸出操作框上沿：量到的张开度偏低，但不能据此判成握拳。"""
+        res, f = self.run_pipeline(synth.draw_hand(5, center=(140, 70), r=50))
+        self.assertLess(f.open_ratio, self.cfg["features"]["fist_max_ratio"])
+        self.assertEqual(f.gesture, "between")
+        res, f = self.run_pipeline(synth.draw_hand(0, center=(140, 120), r=50))
+        self.assertEqual(f.gesture, "fist")  # 没碰到上沿的拳头照常判定
+
     def test_between_thresholds(self):
         fc = self.cfg["features"]
         mid = (fc["fist_max_ratio"] + fc["palm_min_ratio"]) / 2

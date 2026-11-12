@@ -40,6 +40,62 @@ def palm_center(filled):
     return dt, center, float(radius)
 
 
+def hand_end_point(filled):
+    """手那一端的端点：掩膜沿主轴方向最靠"上"的点（小臂从下方或侧面伸进来，手在另一头）。
+
+    主轴用二阶矩求。主轴接近水平时"上"没有意义，改为远离掩膜贴着的那条左 / 右边界。
+    """
+    m = cv2.moments(filled, binaryImage=True)
+    if m["m00"] <= 0:
+        return None
+    theta = 0.5 * np.arctan2(2.0 * m["mu11"], m["mu20"] - m["mu02"])
+    ux, uy = float(np.cos(theta)), float(np.sin(theta))
+    if abs(uy) >= 0.35:
+        if uy > 0:
+            ux, uy = -ux, -uy
+    else:
+        left = int(np.count_nonzero(filled[:, 0]))
+        right = int(np.count_nonzero(filled[:, -1]))
+        if left == right:
+            return None
+        if (ux > 0) == (right > left):
+            ux, uy = -ux, -uy
+    ys, xs = np.nonzero(filled)
+    k = int(np.argmax(xs * ux + ys * uy))
+    return float(xs[k]), float(ys[k])
+
+
+def locate_palm(filled, fcfg):
+    """掌心和内切圆半径。
+
+    整块掩膜里最粗的地方通常是手掌，但露着小臂、小臂又靠近袖口或镜头时，小臂会比手掌粗，
+    内切圆就落到小臂上。所以只在"离手那一端不超过 hand_span 倍半径"的范围里找最粗处。
+    """
+    dt, center, radius = palm_center(filled)
+    span = fcfg.get("hand_span", 0.0)
+    if radius < 1.0 or span <= 0:
+        return dt, center, radius
+    end = hand_end_point(filled)
+    if end is None:
+        return dt, center, radius
+    h, w = filled.shape[:2]
+    yy, xx = np.ogrid[:h, :w]
+    d2 = (xx - end[0]) ** 2 + (yy - end[1]) ** 2
+    limit = span * radius
+    if (center[0] - end[0]) ** 2 + (center[1] - end[1]) ** 2 <= limit * limit:
+        return dt, center, radius
+    floor = fcfg.get("hand_min_shrink", 0.5) * radius
+    for _ in range(4):
+        near = np.where(d2 <= limit * limit, dt, 0.0).astype(np.float32)
+        _, r1, _, c1 = cv2.minMaxLoc(near)
+        if r1 < floor:
+            break  # 手那一端太细（手被裁掉或只是噪声），保持原来的结果
+        if np.hypot(c1[0] - end[0], c1[1] - end[1]) < limit - 2.0:
+            return dt, c1, float(r1)  # 范围内部的极大值：就是手掌
+        limit *= 0.8  # 最粗处贴在范围边上，说明还在越来越粗的小臂上，收紧范围再找
+    return dt, center, radius
+
+
 def arm_direction(dt, center, radius, fcfg):
     """找小臂方向（单位向量），找不到返回 None。"""
     px, py = center
@@ -125,23 +181,29 @@ def extract(mask, cfg):
         return HandFeatures()
     filled = np.zeros_like(mask)
     cv2.drawContours(filled, [contour], -1, 255, -1)
-    dt, center, radius = palm_center(filled)
+    dt, center, radius = locate_palm(filled, fcfg)
     if radius < 1.0:
         return HandFeatures()
     pts = contour.reshape(-1, 2).astype(np.float32)
     v = pts - np.float32(center)
     dist = np.hypot(v[:, 0], v[:, 1])
     arm = arm_direction(dt, center, radius, fcfg)
-    ok = np.ones(len(pts), bool)
-    if arm is not None:
-        cos = (v[:, 0] * arm[0] + v[:, 1] * arm[1]) / np.maximum(dist, 1e-6)
-        ok = cos < fcfg["arm_exclude_cos"]
-        if not ok.any():
-            ok[:] = True
+    # 没找到小臂时（小臂只露出一小截，或手腕贴着画面下沿）按"小臂在正下方"处理：
+    # 否则握拳时那一小截手腕会被当成伸出的手指，张开度偏高
+    ex = arm if arm is not None else (0.0, 1.0)
+    cos = (v[:, 0] * ex[0] + v[:, 1] * ex[1]) / np.maximum(dist, 1e-6)
+    ok = cos < fcfg["arm_exclude_cos"]
+    if not ok.any():
+        ok[:] = True
     idx = np.nonzero(ok)[0]
     j = int(idx[np.argmax(dist[idx])])
     ratio = float(dist[j]) / radius
-    return HandFeatures(classify(ratio, fcfg), contour, cv2.convexHull(contour),
+    gesture = classify(ratio, fcfg)
+    # 最远点落在操作框的上边界上：手指伸出了画面，量到的张开度只是下限。
+    # 这时"握拳"的结论不可信（光标移到房间顶部时指尖就会出框），改成 between 保持原状态
+    if gesture == "fist" and pts[j][1] <= fcfg.get("clip_margin", 3):
+        gesture = "between"
+    return HandFeatures(gesture, contour, cv2.convexHull(contour),
                         (float(center[0]), float(center[1])), radius,
                         (int(pts[j][0]), int(pts[j][1])), arm, ratio, cv2.boundingRect(contour),
                         touches_edge(mask, fcfg, center, radius, arm))

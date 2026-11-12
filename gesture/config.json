@@ -44,11 +44,17 @@
     "dilate_kernel": 25,
     "static_hand_ratio": 0.5,
     "static_threshold": 0.5,
-    "static_alpha": 0.08
+    "static_alpha": 0.08,
+    "static_cut_kernel": 7,
+    "static_contested_alpha": 0.02,
+    "side_strip_width": 70
   },
   "features": {
-    "fist_max_ratio": 2.25,
-    "palm_min_ratio": 2.5,
+    "hand_span": 4.5,
+    "hand_min_shrink": 0.5,
+    "clip_margin": 3,
+    "fist_max_ratio": 2.1,
+    "palm_min_ratio": 2.3,
     "arm_thick_ratio": 0.3,
     "arm_palm_disc": 1.25,
     "arm_min_area": 0.15,

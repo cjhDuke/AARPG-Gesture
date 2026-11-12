@@ -57,6 +57,32 @@ class SelectorTest(unittest.TestCase):
         self.assertAlmostEqual(c[0], 210, delta=6)
         self.assertAlmostEqual(c[1], 300, delta=6)
 
+    def test_hand_touching_face_is_split(self):
+        """脸的一侧露在操作框左边，手靠过去连成一块：手仍然单独被选中，掌心不被脸带偏。"""
+        def strip_scene(hand=None):
+            img = synth.canvas()
+            cv2.rectangle(img, (0, 60), (40, 220), synth.SKIN, -1)
+            if hand:
+                cv2.circle(img, hand, 40, synth.SKIN, -1)
+            return img
+        for _ in range(20):  # 只有脸：贴边窄条不算手，并被记成静止肤色
+            res, c = self.palm(strip_scene())
+            self.assertFalse(res.has_hand)
+        for x in (200, 170, 140, 110, 78):  # 手从右边靠过来，最后和脸连在一起
+            res, c = self.palm(strip_scene((x, 140)))
+            self.assertTrue(res.has_hand, x)
+        self.assertGreater(c[0], 60, c)
+        self.assertEqual(int(res.mask[100:180, 0:30].max()), 0)  # 脸那一条不在手的掩膜里
+        for _ in range(5):  # 手离开后不会跟到脸上
+            res, c = self.palm(strip_scene())
+            self.assertFalse(res.has_hand)
+
+    def test_hand_at_side_edge_still_tracked(self):
+        """手伸到操作框右边、贴着边界，但它比窄条宽得多，不能被当成脸丢掉。"""
+        for x in (140, 180, 215, 235):
+            res, c = self.palm(scene((x, 200)))
+            self.assertTrue(res.has_hand, x)
+
     def test_calibrate_clears_state(self):
         for _ in range(5):
             self.palm(scene((140, 180)))
