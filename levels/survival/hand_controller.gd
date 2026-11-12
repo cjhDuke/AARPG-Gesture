@@ -34,7 +34,7 @@ const WALK_STOP_DIST : float = 4.0
 ## 依据：AttackHitBox 圆半径 20、敌人受击圆在其原点上方 7 像素；
 ## 无界面实测上下左右四个方向、敌人静止在 20 / 30 / 35 像素处，都能被命中（距离 >35 未测）。
 const ATTACK_RANGE : float = 36.0
-const ATTACK_COOLDOWN : float = 0.45
+const ATTACK_COOLDOWN : float = 0.32
 
 ## 念力：不低于它才能起飞 / 重新抓住
 const PSI_START_MIN : float = 0.3

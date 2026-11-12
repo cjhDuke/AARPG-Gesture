@@ -51,6 +51,8 @@ var _move_tween : Tween
 
 func _ready() -> void:
 	add_to_group( "loot_fx" )
+	# 和主角同一 z 层，按 y 排序
+	z_index = 2
 	var tex := AtlasTexture.new()
 	tex.atlas = ITEMS_TEXTURE
 	tex.region = REGIONS[kind]

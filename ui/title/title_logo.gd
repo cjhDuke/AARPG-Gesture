@@ -77,6 +77,16 @@ func play_intro() -> void:
 	tw.chain().tween_callback( _on_intro_done )
 
 
+## 不播下落动画，字母直接就位（从游戏里返回标题时用）
+func show_instantly() -> void:
+	_float_t = 0.0
+	_holder.position.y = 0.0
+	for l in _letters:
+		l.position.y = rest_y
+		l.visible = true
+	_on_intro_done()
+
+
 func _on_intro_done() -> void:
 	_floating = true
 	intro_finished.emit()

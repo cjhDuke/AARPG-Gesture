@@ -31,6 +31,8 @@ var _closing : bool = false
 
 
 func _ready() -> void:
+	# 主角的 z_index 是 2；取同一层才能和主角按 y 排序（主角站在箱子后面时被箱子挡住）
+	z_index = 2
 	_sprite = Sprite2D.new()
 	_sprite.texture = CHEST_TEXTURE
 	_sprite.hframes = 2

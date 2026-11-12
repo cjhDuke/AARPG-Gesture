@@ -4,6 +4,8 @@ var attacking : bool = false
 
 @export  var attack_sound :AudioStream
 @export_range(1,20,0.5) var decelerate_speed : float =5.0
+## 挥剑动画的播放倍速（1 为原速 0.3 秒一剑）；只在攻击状态内生效
+@export var attack_speed : float = 1.25
 
 @onready var animation_player: AnimationPlayer = $"../../AnimationPlayer"
 @onready var attack_anim: AnimationPlayer = $"../../Sprite2D/AttackEffectSprite/AnimationPlayer"
@@ -18,6 +20,8 @@ var attacking : bool = false
 ## What happens when the player enters this State
 func enter() -> void:
 	player.update_animation("attack")
+	animation_player.speed_scale = attack_speed
+	attack_anim.speed_scale = attack_speed
 	attack_anim.play("attack_" + player.anim_direction() )
 	animation_player.animation_finished.connect( end_attack )
 	
@@ -26,7 +30,7 @@ func enter() -> void:
 	audio.play()
 	
 	attacking = true
-	await get_tree().create_timer( 0.075 ).timeout
+	await get_tree().create_timer( 0.075 / attack_speed ).timeout
 	if attacking and state_machine.current_state == self and player.is_dead == false:
 		hit_box.monitoring = true
 	pass
@@ -37,6 +41,8 @@ func exit() -> void:
 		animation_player.animation_finished.disconnect( end_attack )
 	attacking = false
 	hit_box.monitoring = false
+	animation_player.speed_scale = 1.0
+	attack_anim.speed_scale = 1.0
 	pass
 	
 ## What heppens during the process update in the State

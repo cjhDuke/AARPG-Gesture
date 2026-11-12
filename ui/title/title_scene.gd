@@ -52,12 +52,18 @@ func _ready() -> void:
 	menu.visible = false
 	marker.visible = false
 
-	splash_screen.finished.connect(setup_title_screen)
-
 	LevelManager.level_load_started.connect(exit_title_screen)
+
+	# 从游戏里返回标题：不再播开场 splash，直接进标题菜单
+	if LevelManager.title_seen:
+		setup_title_screen()
+	else:
+		splash_screen.finished.connect(setup_title_screen)
 
 
 func setup_title_screen() -> void:
+	var returning := LevelManager.title_seen
+	LevelManager.title_seen = true
 	if is_instance_valid(splash_screen):
 		splash_screen.queue_free()
 
@@ -83,7 +89,11 @@ func setup_title_screen() -> void:
 	# 标题入场：字母逐个落下，每落一个响一声；全部落定后淡入副标题和回旋镖，按钮滑入
 	logo.letter_landed.connect(func(_i: int) -> void: play_audio(button_focus_audio))
 	logo.intro_finished.connect(_on_logo_finished)
-	logo.play_intro()
+	# 从游戏里返回标题：字母直接就位，不再播下落动画
+	if returning:
+		logo.show_instantly()
+	else:
+		logo.play_intro()
 
 
 func _on_logo_finished() -> void:
