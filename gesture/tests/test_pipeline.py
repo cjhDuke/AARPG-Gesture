@@ -231,6 +231,30 @@ class BackgroundTest(unittest.TestCase):
             res = seg.process(img)
         self.assertTrue(res.has_hand)
 
+    def test_still_hand_area_kept(self):
+        seg = synth.make_segmenter(self.cfg)
+        img = synth.draw_hand(0)
+        first = seg.process(img).area
+        for _ in range(120):
+            res = seg.process(img)
+        self.assertTrue(res.has_hand)
+        self.assertGreater(res.area, first * 0.9)
+
+    def _ghost_run(self, ghost_alpha):
+        # 背景模型里留着一只肤色"鬼影手"，真实画面里那里其实是灰墙
+        cfg = synth.load_cfg()
+        cfg["background"]["ghost_alpha"] = ghost_alpha
+        seg = synth.make_segmenter(cfg, synth.draw_hand(0))
+        for _ in range(60):
+            self.assertFalse(seg.process(synth.canvas()).has_hand)
+        return seg.process(synth.draw_hand(0)).has_hand
+
+    def test_ghost_background_heals(self):
+        self.assertTrue(self._ghost_run(0.1))
+
+    def test_ghost_persists_without_healing(self):
+        self.assertFalse(self._ghost_run(0.0))
+
     def test_roi_resize_needs_recalibration(self):
         seg = synth.make_segmenter(self.cfg)
         small = cv2.resize(synth.draw_hand(0), (200, 250))
