@@ -7,19 +7,19 @@ const TRAIL_MAX_POINTS := 12
 ## 精灵相对节点的偏移（场景里 Sprite2D 在 (0,-16)）
 const SPRITE_OFFSET := Vector2( 0, -16 )
 
-## 冰霜尾迹：减速时长（秒）、拖尾点离敌人多近算扫到（像素）
-const FROST_TIME : float = 2.0
+## 冰霜尾迹：拖尾点离敌人多近算扫到（像素）；减速时长和比例由等级决定（frost_time / frost_factor）
 const FROST_TRAIL_DIST : float = 14.0
-## 沉重回旋镖（穿透强化）：伤害加成和体积倍率
-const HEAVY_BONUS : int = 1
-const HEAVY_SCALE : float = 1.3
 
 var player : Player
 ## 强化开关（由 HandController 在每次起飞 / 切换强化时设置）
 var frost : bool = false
+## 冰霜减速时长（秒）和速度倍率（0.5 = 减速 50%）；frost 为 true 时有效
+var frost_time : float = 2.0
+var frost_factor : float = 0.5
 ## 掉落物被吸附的距离（精灵中心到掉落物图标中心，像素）；吸附强化加大
 var magnet_range : float = 18.0
-var _heavy : bool = false
+var _heavy_bonus : int = 0
+var _heavy_scale : float = 1.0
 var direction : Vector2
 var speed : float = 0
 var state
@@ -130,17 +130,18 @@ func regrab() -> bool:
 	return true
 
 
-## 沉重回旋镖开 / 关：伤害 +1、精灵和判定放大约 1.3 倍（缩放子节点自己，位置偏移不变）
-func set_heavy( on : bool ) -> void:
-	if on == _heavy:
+## 沉重回旋镖（穿透强化）：伤害 +damage_bonus、精灵和判定放大 scale_mult 倍（缩放子节点自己，位置偏移不变）；0 / 1.0 = 关
+func set_heavy( damage_bonus : int, scale_mult : float ) -> void:
+	if damage_bonus == _heavy_bonus and is_equal_approx( scale_mult, _heavy_scale ):
 		return
-	_heavy = on
-	var k := HEAVY_SCALE if on else 1.0
+	_heavy_bonus = damage_bonus
+	_heavy_scale = scale_mult
 	var hb : HitBox = $HitBox
-	hb.damage = 1 + ( HEAVY_BONUS if on else 0 )
-	$Sprite2D.scale = Vector2( k, k )
-	$HitBox/CollisionShape2D2.scale = Vector2( k, k )
-	$Area2D/CollisionShape2D.scale = Vector2( k, k )
+	hb.damage = 1 + damage_bonus
+	var k := Vector2( scale_mult, scale_mult )
+	$Sprite2D.scale = k
+	$HitBox/CollisionShape2D2.scale = k
+	$Area2D/CollisionShape2D.scale = k
 
 
 ## 冰霜尾迹：拖尾点 FROST_TRAIL_DIST 以内的敌人减速
@@ -153,7 +154,7 @@ func _frost_sweep() -> void:
 			var p : Vector2 = c.global_position + Vector2( 0, -8 )
 			for i in _trail.get_point_count():
 				if _trail.get_point_position( i ).distance_to( p ) <= FROST_TRAIL_DIST:
-					c.apply_slow( FROST_TIME )
+					c.apply_slow( frost_time, frost_factor )
 					break
 
 

@@ -31,6 +31,8 @@ var _holder: Control
 var _letters: Array[Control] = []
 var _float_t: float = 0.0
 var _floating: bool = false
+var _skipped: bool = false
+var _intro_tween: Tween
 
 
 func _ready() -> void:
@@ -48,6 +50,13 @@ func _process( delta: float ) -> void:
 	_holder.position.y = roundf( sin( _float_t * TAU / FLOAT_PERIOD ) * FLOAT_AMPLITUDE )
 
 
+## 下落动画期间按确认键（回车 / 空格）直接跳过
+func _unhandled_input( event: InputEvent ) -> void:
+	if _intro_tween != null and not _floating and event.is_action_pressed( "ui_accept" ):
+		skip_intro()
+		get_viewport().set_input_as_handled()
+
+
 ## 标题总宽度（屏幕像素），给外部对齐其他元素用
 func get_text_width() -> float:
 	var font := get_theme_default_font()
@@ -59,12 +68,14 @@ func get_text_width() -> float:
 
 func play_intro() -> void:
 	_floating = false
+	_skipped = false
 	_float_t = 0.0
 	_holder.position.y = 0.0
 	for l in _letters:
 		l.position.y = DROP_FROM_Y
 		l.visible = true
 	var tw := create_tween()
+	_intro_tween = tw
 	tw.set_parallel( true )
 	var k := 0
 	for i in _letters.size():
@@ -77,8 +88,13 @@ func play_intro() -> void:
 	tw.chain().tween_callback( _on_intro_done )
 
 
-## 不播下落动画，字母直接就位（从游戏里返回标题时用）
-func show_instantly() -> void:
+## 跳过下落动画：字母直接就位并发 intro_finished（按确认键跳过；动画已结束时无效）
+func skip_intro() -> void:
+	if _floating or _skipped:
+		return
+	_skipped = true
+	if _intro_tween:
+		_intro_tween.kill()
 	_float_t = 0.0
 	_holder.position.y = 0.0
 	for l in _letters:

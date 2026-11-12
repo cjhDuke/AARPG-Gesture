@@ -34,12 +34,8 @@ const WALK_STOP_DIST : float = 4.0
 ## 依据：ChargeSpinHitBox 是半径 38 的圆，伤害 2；取略小于半径的值保证放出来能打到。
 ## ATTACK_COOLDOWN 是两次旋转斩起手之间的最短间隔（一次旋转约 0.31 秒）
 const ATTACK_RANGE : float = 34.0
-## 大回旋强化：旋转斩半径 38 -> 50，自动攻击触发距离相应加大
-const ATTACK_RANGE_WIDE : float = 44.0
-## 强化参数
-const POOL_DRAIN_FACTOR : float = 1.0 / 1.5
-const POOL_REGEN_FACTOR : float = 1.3
-const MAGNET_RANGE : float = 45.0
+## 吸附强化关闭时的默认吸附距离（精灵中心到掉落物图标中心，像素）
+const MAGNET_RANGE_DEFAULT : float = 18.0
 ## 冲击波（实验项）：光标离主角多近算"在主角身上"、耗念力、半径、伤害、击退倍率
 const SHOCK_CURSOR_DIST : float = 16.0
 const SHOCK_PSI_COST : float = 0.3
@@ -62,8 +58,8 @@ const KEY_STEP : float = 80.0
 ## 操控状态变化时发出的简短英文事件（LAUNCH / REGRAB / RELEASE: ... / BLOCKED: ...），
 ## 给练习场面板的事件日志用
 signal control_event( text : String )
-## 已拥有的强化变化时发出（参数是按 Upgrades.LIST 顺序排列的 id 数组），HUD 图标行用
-signal upgrades_changed( ids : Array )
+## 强化等级变化时发出（参数是 { id: 等级 }，只含等级 > 0 的项，按 Upgrades.LIST 顺序），HUD 图标行用
+signal upgrades_changed( levels : Dictionary )
 
 ## ---------- 调参（普通变量，练习场面板运行时会改它们） ----------
 ## 走位时光标每秒最多移动的像素数
@@ -83,19 +79,21 @@ var guided_hand_grace : float = 0.6
 ## 念力每秒消耗 / 回复（0-1 为满）
 var psi_drain : float = 1.0 / 3.0
 var psi_regen : float = 1.0 / 4.0
-## 念力爆破（受控飞行结束时在镖的位置炸一次；手丢失不炸）：范围半径（像素）、伤害、
-## 张开 / 松键触发时额外扣的念力（0-1，不够扣到 0 仍爆；念力耗尽触发的不额外扣）、
+## 念力爆破（受控飞行结束时在镖的位置炸一次；手丢失不炸）：基础范围半径（像素）、基础伤害
+## （实际值 = 基础值 + 等级加成，见 blast_radius_now / blast_damage_now；练习场面板调的是基础值）、
+## 张开 / 松键触发时额外扣的念力（0-1，不够扣到 0 仍爆；念力耗尽触发的不额外扣；3 级免扣）、
 ## 本次受控飞行至少持续多久才爆（秒，防止点一下就炸）。放在控制器里是因为触发在这里判断，练习场面板也在这里调参
 var blast_radius : float = 36.0
 var blast_damage : int = 2
 var blast_psi_cost : float = 0.15
 var blast_min_guided_time : float = 0.3
-## 念力爆破是强化解锁的技能，默认关闭；由 has_upgrade("blast") 同步，每局开始 reset_upgrades() 复位
+## 念力爆破是强化解锁的技能，默认关闭；由 upgrade_level("blast") > 0 同步，每局开始 reset_upgrades() 复位
 var blast_enabled : bool = false
-## 自动攻击触发距离（大回旋强化时加大）
+## 自动攻击触发距离 / 冷却（大回旋、弹反强化时变化）
 var attack_range : float = ATTACK_RANGE
-## 已拥有的强化集合（id -> true）。放在控制器里的原因：念力、回旋镖起飞、自动攻击的参数都在这里，
-## 强化是"开关状态 -> 效果"，set_upgrade() 会把效果同步到各处，关闭时恢复；reset() 每局清空
+var attack_cooldown : float = ATTACK_COOLDOWN
+## 各强化的当前等级（id -> 等级，0 级不存）。放在控制器里的原因：念力、回旋镖起飞、自动攻击的参数都在这里，
+## 强化是"等级 -> 效果"，set_upgrade_level() 会把效果整体重新推出，降级 / 清零时恢复；reset() 每局清空
 var upgrades : Dictionary = {}
 
 ## ---------- 开关（默认是正常游戏的行为；练习场面板会改） ----------
@@ -166,50 +164,73 @@ func reset() -> void:
 	_update_hud()
 
 
-## 强化全部复位；reset() 会调用
+## 强化全部复位（所有等级清零）；reset() 会调用
 func reset_upgrades() -> void:
 	upgrades.clear()
 	_apply_upgrades()
-	upgrades_changed.emit( owned_ids() )
+	upgrades_changed.emit( owned_levels() )
 
 
+## 某项强化的等级（0 = 没有）
+func upgrade_level( id : String ) -> int:
+	return int( upgrades.get( id, 0 ) )
+
+
+## 有没有这项强化（等级 > 0）
 func has_upgrade( id : String ) -> bool:
-	return upgrades.get( id, false )
+	return upgrade_level( id ) > 0
 
 
-## 按表顺序返回已拥有的强化 id
-func owned_ids() -> Array:
-	var r : Array = []
+## 已拥有（等级 > 0）的强化 { id: 等级 }，按 Upgrades.LIST 的顺序
+func owned_levels() -> Dictionary:
+	var r : Dictionary = {}
 	for id in Upgrades.all_ids():
 		if has_upgrade( id ):
-			r.append( id )
+			r[id] = upgrade_level( id )
 	return r
 
 
-## 开 / 关一项强化（每项只能拥有一次，重复开 / 关无效果）
-func set_upgrade( id : String, on : bool ) -> void:
-	if on == has_upgrade( id ) or Upgrades.get_def( id ).is_empty():
+## 直接设置某项强化的等级（夹在 0..最高级；可升可降，效果整体重新推出）
+func set_upgrade_level( id : String, lv : int ) -> void:
+	var max_lv := Upgrades.max_level( id )
+	if max_lv == 0:
 		return
-	if on:
-		upgrades[id] = true
-	else:
+	lv = clampi( lv, 0, max_lv )
+	if lv == upgrade_level( id ):
+		return
+	if lv == 0:
 		upgrades.erase( id )
+	else:
+		upgrades[id] = lv
 	_apply_upgrades()
-	upgrades_changed.emit( owned_ids() )
+	upgrades_changed.emit( owned_levels() )
 
 
-## 把当前强化集合同步成实际效果（可重复调用；各项都是"由集合推出状态"，所以开关都可逆）
+## 强化升一级（已满级无效果），返回新等级
+func add_upgrade( id : String ) -> int:
+	set_upgrade_level( id, upgrade_level( id ) + 1 )
+	return upgrade_level( id )
+
+
+## 把当前各强化等级同步成实际效果（可重复调用；各项都是"由等级推出状态"，所以升降都可逆）
 func _apply_upgrades() -> void:
-	blast_enabled = has_upgrade( "blast" )
+	var lv_blast := upgrade_level( "blast" )
+	blast_enabled = lv_blast > 0
 	# 弹反：静态变量，复位时必须清掉
-	EnemyProjectile.parry_by_spin = has_upgrade( "parry" )
-	attack_range = ATTACK_RANGE_WIDE if has_upgrade( "wide_spin" ) else ATTACK_RANGE
+	var lv_parry := upgrade_level( "parry" )
+	EnemyProjectile.parry_by_spin = lv_parry > 0
+	attack_cooldown = float( Upgrades.param( "parry", lv_parry, "cooldown", ATTACK_COOLDOWN ) )
+	var lv_wide := upgrade_level( "wide_spin" )
+	attack_range = float( Upgrades.param( "wide_spin", lv_wide, "range", ATTACK_RANGE ) )
 	if is_instance_valid( _player ):
 		var spin := _player.get_node_or_null( "StateMachine/ChargeAttack" ) as State_ChargeAttack
 		if spin != null:
-			spin.set_wide( has_upgrade( "wide_spin" ) )
-		# 心之容器：上限 +2（一颗心），新增的容量立即补满；关闭 / 重开时恢复上限
-		var want := Player.BASE_MAX_HP + ( 2 if has_upgrade( "heart" ) else 0 )
+			spin.set_wide(
+				float( Upgrades.param( "wide_spin", lv_wide, "scale", 1.0 ) ),
+				float( Upgrades.param( "wide_spin", lv_wide, "knockback", 1.0 ) ),
+				int( Upgrades.param( "wide_spin", lv_wide, "damage", 0 ) ) )
+		# 心之容器：每级 +1 颗心（上限 +2），升级时新增的容量立即补满；降级 / 重开时恢复上限，当前血量不超过新上限
+		var want := Player.BASE_MAX_HP + int( Upgrades.param( "heart", upgrade_level( "heart" ), "hp", 0 ) )
 		if want != _player.max_hp:
 			var diff := want - _player.max_hp
 			_player.max_hp = want
@@ -222,18 +243,35 @@ func _apply_upgrades() -> void:
 func _apply_to_boomerang( b : Boomerang ) -> void:
 	if b == null:
 		return
-	b.set_heavy( has_upgrade( "pierce" ) )
-	b.magnet_range = MAGNET_RANGE if has_upgrade( "magnet" ) else 18.0
-	b.frost = has_upgrade( "frost" )
+	var lv_p := upgrade_level( "pierce" )
+	b.set_heavy( int( Upgrades.param( "pierce", lv_p, "damage", 0 ) ), float( Upgrades.param( "pierce", lv_p, "scale", 1.0 ) ) )
+	b.magnet_range = float( Upgrades.param( "magnet", upgrade_level( "magnet" ), "range", MAGNET_RANGE_DEFAULT ) )
+	var lv_f := upgrade_level( "frost" )
+	b.frost = lv_f > 0
+	b.frost_time = float( Upgrades.param( "frost", lv_f, "time", 2.0 ) )
+	b.frost_factor = 1.0 - float( Upgrades.param( "frost", lv_f, "slow", 0.5 ) )
 
 
-## 实际的念力每秒消耗 / 回复（念力池强化：持续时间 x1.5，回充 +30%）
+## 实际的念力每秒消耗 / 回复（念力池强化：持续时间 x1.5 / 2 / 2.5，回充 x1.3 / 1.6 / 1.9）
 func _drain_rate() -> float:
-	return psi_drain * ( POOL_DRAIN_FACTOR if has_upgrade( "pool" ) else 1.0 )
+	return psi_drain / float( Upgrades.param( "pool", upgrade_level( "pool" ), "time_mult", 1.0 ) )
 
 
 func _regen_rate() -> float:
-	return psi_regen * ( POOL_REGEN_FACTOR if has_upgrade( "pool" ) else 1.0 )
+	return psi_regen * float( Upgrades.param( "pool", upgrade_level( "pool" ), "regen_mult", 1.0 ) )
+
+
+## 念力爆破实际半径 / 伤害 / 张开触发的额外念力消耗（基础值 + 等级加成；3 级不额外耗念力）
+func blast_radius_now() -> float:
+	return blast_radius + float( Upgrades.param( "blast", upgrade_level( "blast" ), "radius_bonus", 0.0 ) )
+
+
+func blast_damage_now() -> int:
+	return blast_damage + int( Upgrades.param( "blast", upgrade_level( "blast" ), "damage_bonus", 0 ) )
+
+
+func blast_psi_cost_now() -> float:
+	return 0.0 if bool( Upgrades.param( "blast", upgrade_level( "blast" ), "free", false ) ) else blast_psi_cost
 
 
 ## 回复念力（amount 为 0-1 的比例，结果夹在 0-1），宝石 / 药水用
@@ -460,8 +498,8 @@ func _end_guided( reason : String = "" ) -> void:
 	# 张开 / 松键 / 念力耗尽才爆，手丢失和静默收尾不爆
 	if blast_enabled and can_blast and reason in [ "RELEASE: OPEN", "RELEASE: KEY UP", "RELEASE: PSI EMPTY" ]:
 		if reason != "RELEASE: PSI EMPTY" and not psi_infinite:
-			psi = maxf( psi - blast_psi_cost, 0.0 )
-		PsiBlast.spawn( _player.get_parent(), blast_pos, blast_radius, blast_damage )
+			psi = maxf( psi - blast_psi_cost_now(), 0.0 )
+		PsiBlast.spawn( _player.get_parent(), blast_pos, blast_radius_now(), blast_damage_now() )
 		control_event.emit( "BLAST" )
 
 
@@ -526,7 +564,7 @@ func _update_auto_attack() -> void:
 				break
 	if not in_range:
 		return
-	_attack_cd = ATTACK_COOLDOWN
+	_attack_cd = attack_cooldown
 	_swing()
 
 

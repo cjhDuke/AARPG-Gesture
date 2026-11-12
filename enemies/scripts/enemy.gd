@@ -106,7 +106,7 @@ func _take_damage( hit_box : HitBox ) ->void:
 		return
 	var src := hit_box.get_parent()
 	if src is Boomerang and src.frost:
-		apply_slow( Boomerang.FROST_TIME )
+		apply_slow( src.frost_time, src.frost_factor )
 	hp -= hit_box.damage
 	if hp > 0:
 		enemy_damaged.emit( hit_box )

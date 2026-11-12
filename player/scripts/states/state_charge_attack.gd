@@ -9,12 +9,9 @@ class_name State_ChargeAttack extends State
 ## 直接放的旋转斩期间主角是否无敌（蓄力版始终无敌）
 @export var spin_invulnerable : bool = false
 
-## 大回旋强化：判定半径 38 -> 50，击退倍率
-const WIDE_SCALE : float = 50.0 / 38.0
-const WIDE_KNOCKBACK : float = 1.6
-
 var _fx_base_scale : Vector2
-var _fx_base_known : bool = false
+var _base_damage : int = 0
+var _base_known : bool = false
 var timer : float = 0.0
 var walking : bool = false
 var is_attacking : bool = false
@@ -142,15 +139,18 @@ func charge_complete() -> void:
 	particles.initial_velocity_max = 30
 
 
-## 大回旋开 / 关：放大旋转斩的判定圆和特效，加强击退（缩放碰撞体自身，位置不变）
-func set_wide( on : bool ) -> void:
-	if not _fx_base_known:
+## 大回旋强化：判定圆和特效放大 scale_mult 倍（基础半径 38）、击退倍率 knockback、伤害 +damage_bonus；
+## 传 1.0 / 1.0 / 0 即恢复默认（缩放碰撞体自身，位置不变）
+func set_wide( scale_mult : float, knockback : float, damage_bonus : int ) -> void:
+	if not _base_known:
 		_fx_base_scale = spin_effect_sprite_2d.scale
-		_fx_base_known = true
-	var k := WIDE_SCALE if on else 1.0
-	charge_spin_hit_box.get_node( "CollisionShape2D" ).scale = Vector2( k, k )
-	charge_spin_hit_box.knockback_mult = WIDE_KNOCKBACK if on else 1.0
-	spin_effect_sprite_2d.scale = _fx_base_scale * k
+		_base_damage = charge_spin_hit_box.damage
+		_base_known = true
+	var k := Vector2( scale_mult, scale_mult )
+	charge_spin_hit_box.get_node( "CollisionShape2D" ).scale = k
+	charge_spin_hit_box.knockback_mult = knockback
+	charge_spin_hit_box.damage = _base_damage + damage_bonus
+	spin_effect_sprite_2d.scale = _fx_base_scale * scale_mult
 
 
 func play_audio( _audio : AudioStream ) -> void:

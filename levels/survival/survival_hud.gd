@@ -94,16 +94,18 @@ func set_bag( count : int, capacity : int ) -> void:
 		_bag_icons[i].modulate = Color.WHITE if i < count else Color( 0, 0, 0, 0.45 )
 
 
-## 已拥有的强化用小图标排成一行
-func set_upgrades( ids : Array ) -> void:
+## 已拥有的强化用小图标排成一行，图标底部用小点标出等级（levels 是 { id: 等级 }）
+func set_upgrades( levels : Dictionary ) -> void:
 	for c in _upgrade_icons:
 		c.queue_free()
 	_upgrade_icons.clear()
-	for i in ids.size():
-		var icon := Upgrades.Icon.new( ids[i], UPGRADE_ICON )
+	var i := 0
+	for id in levels:
+		var icon := Upgrades.Icon.new( id, UPGRADE_ICON, int( levels[id] ) )
 		icon.position = UPGRADE_POS + Vector2( UPGRADE_STEP * i, 0 )
 		$Root.add_child( icon )
 		_upgrade_icons.append( icon )
+		i += 1
 
 
 func show_banner( text : String ) -> void:
