@@ -39,6 +39,8 @@ func _ready() -> void:
 	loot.name = "LootDropper"
 	loot.controller = controller
 	add_child( loot )
+	loot.bag_changed.connect( hud.set_bag )
+	hud.set_bag( 0, LootDropper.BAG_CAPACITY )
 	spawner.enemy_destroyed_at.connect( loot.handle_enemy_destroyed )
 	spawner.enemy_killed.connect( _on_enemy_killed )
 	spawner.wave_cleared.connect( _on_wave_cleared )

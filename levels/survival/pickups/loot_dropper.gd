@@ -10,12 +10,54 @@ const APPLE_PITY_KILLS : int = 10
 ## 同时掉宝石和苹果时，两者的水平错开距离（像素）
 const SPLIT_OFFSET : float = 8.0
 
+## 背包里苹果数变化时发出（HUD 用）
+signal bag_changed( count : int, capacity : int )
+
+## 背包最多存几个苹果
+const BAG_CAPACITY : int = 3
+## 主角不满血且背包有苹果时，隔这么久自动吃一个（秒）
+const EAT_DELAY : float = 0.6
+
 ## 为 false 时不掉苹果（回旋镖练习场只掉宝石）
 var apples_enabled : bool = true
 ## 念力来源（宝石 / 药水用）
 var controller : HandController
 
+## 背包里的苹果：满血时捡到的苹果存这里，受伤后自动吃
+var bag_apples : int = 0
+
 var _kills_since_apple : int = 0
+var _eat_timer : float = 0.0
+
+
+func _process( delta : float ) -> void:
+	var player := PlayerManager.player
+	if bag_apples <= 0 or player == null or player.is_dead or player.hp >= player.max_hp:
+		_eat_timer = 0.0
+		return
+	_eat_timer += delta
+	if _eat_timer < EAT_DELAY:
+		return
+	_eat_timer = 0.0
+	bag_apples -= 1
+	bag_changed.emit( bag_apples, BAG_CAPACITY )
+	player.update_hp( 1 )
+	PlayerHud.flash_heal()
+	PlayerManager.play_audio( Pickup.HP_UP_SOUND )
+	Pickup.show_float_text( get_parent(), player.global_position + Vector2( 0, -48 ), "+1 HP" )
+
+
+func bag_has_room() -> bool:
+	return bag_apples < BAG_CAPACITY
+
+
+## 往背包里放一个苹果，满了返回 false
+func store_apple() -> bool:
+	if not bag_has_room():
+		return false
+	bag_apples += 1
+	bag_changed.emit( bag_apples, BAG_CAPACITY )
+	return true
 
 
 ## 敌人被消灭：hit_box 是致命一击的判定框（属于 Boomerang 节点则是回旋镖击杀）
@@ -47,15 +89,19 @@ func spawn_pickup( kind : int, from : Vector2, dest : Vector2, lifetime : float 
 	p.kind = kind
 	p.lifetime = lifetime
 	p.controller = controller
+	p.loot = self
 	parent.add_child( p )
 	p.global_position = _clamp_to_arena( from )
 	p.pop_to( _clamp_to_arena( dest ) )
 	return p
 
 
-## 清掉场上所有掉落物、飘字和保底计数
+## 清掉场上所有掉落物、飘字、保底计数和背包
 func clear() -> void:
 	_kills_since_apple = 0
+	_eat_timer = 0.0
+	bag_apples = 0
+	bag_changed.emit( bag_apples, BAG_CAPACITY )
 	if not is_inside_tree():
 		return
 	for n in get_tree().get_nodes_in_group( "loot_fx" ):

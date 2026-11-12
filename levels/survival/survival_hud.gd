@@ -14,7 +14,13 @@ signal title_pressed
 @onready var title_button : Button = %TitleButton
 @onready var congrats_music : AudioStreamPlayer = %CongratsMusic
 
+## 背包格子（右上角心形下面）：左上角位置、格子间距、苹果图标在图集里的区域
+const BAG_POS := Vector2( 364, 34 )
+const BAG_STEP : float = 14.0
+const BAG_ICON_REGION := Rect2( 200, 8, 16, 16 )
+
 var _banner_tween : Tween
+var _bag_icons : Array[TextureRect] = []
 
 
 func _ready() -> void:
@@ -31,6 +37,24 @@ func _process( _delta : float ) -> void:
 
 func set_status( wave : int, total_waves : int, kills : int, best : int ) -> void:
 	status_label.text = "WAVE %d/%d  KILLS %d  BEST %d" % [ wave, total_waves, kills, best ]
+
+
+## 背包显示：capacity 个苹果格子，前 count 个点亮，其余是暗色剪影
+func set_bag( count : int, capacity : int ) -> void:
+	while _bag_icons.size() < capacity:
+		var tex := AtlasTexture.new()
+		tex.atlas = Pickup.ITEMS_TEXTURE
+		tex.region = BAG_ICON_REGION
+		var icon := TextureRect.new()
+		icon.texture = tex
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon.position = BAG_POS + Vector2( BAG_STEP * _bag_icons.size(), 0 )
+		$Root.add_child( icon )
+		$Root.move_child( icon, 0 )
+		_bag_icons.append( icon )
+	for i in _bag_icons.size():
+		_bag_icons[i].visible = i < capacity
+		_bag_icons[i].modulate = Color.WHITE if i < count else Color( 0, 0, 0, 0.45 )
 
 
 func show_banner( text : String ) -> void:

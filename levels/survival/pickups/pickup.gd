@@ -40,6 +40,8 @@ var kind : int = Kind.APPLE
 var lifetime : float = DEFAULT_LIFETIME
 ## 用来读 / 加念力；为空时视为念力已满
 var controller : HandController
+## 背包（满血时苹果存进去）；为空时满血的苹果不拾取
+var loot : LootDropper
 
 var _age : float = 0.0
 var _flying : bool = false
@@ -78,14 +80,14 @@ func pop_to( dest : Vector2 ) -> void:
 		.set_trans( Tween.TRANS_QUAD ).set_ease( Tween.EASE_IN )
 
 
-## 主角当前是否该拾取它（满血的苹果不拾取；药水血和念力都满才不拾取；宝石总是拾取）
+## 主角当前是否该拾取它（满血且背包也满的苹果不拾取；药水血和念力都满才不拾取；宝石总是拾取）
 func can_collect() -> bool:
 	var player := PlayerManager.player
 	if player == null or player.is_dead:
 		return false
 	match kind:
 		Kind.APPLE:
-			return player.hp < player.max_hp
+			return player.hp < player.max_hp or ( is_instance_valid( loot ) and loot.bag_has_room() )
 		Kind.POTION:
 			return player.hp < player.max_hp or _psi() < 1.0
 	return true
@@ -167,10 +169,15 @@ func _apply( player : Player ) -> void:
 	var text := ""
 	match kind:
 		Kind.APPLE:
-			player.update_hp( 1 )
-			PlayerHud.flash_heal()
-			PlayerManager.play_audio( HP_UP_SOUND )
-			text = "+1 HP"
+			if player.hp < player.max_hp:
+				player.update_hp( 1 )
+				PlayerHud.flash_heal()
+				PlayerManager.play_audio( HP_UP_SOUND )
+				text = "+1 HP"
+			elif is_instance_valid( loot ) and loot.store_apple():
+				# 满血：存进背包，受伤后由 LootDropper 自动吃
+				PlayerManager.play_audio( PICKUP_SOUND )
+				text = "APPLE SAVED"
 		Kind.GEM:
 			if is_instance_valid( controller ):
 				controller.add_psi( 0.25 )
@@ -183,7 +190,8 @@ func _apply( player : Player ) -> void:
 				controller.add_psi( 1.0 )
 			PlayerManager.play_audio( HP_UP_SOUND )
 			text = "+2 HP  PSI MAX"
-	show_float_text( get_parent(), player.global_position + Vector2( 0, -48 ), text )
+	if text != "":
+		show_float_text( get_parent(), player.global_position + Vector2( 0, -48 ), text )
 	collected.emit( kind )
 	queue_free()
 
