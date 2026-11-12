@@ -4,6 +4,7 @@
 
 - @docs/ai/INDEX.md —— 项目结构、输入系统、运行环境
 - @docs/ai/survival-mode-plan.md —— 当前方案和进度：手引生存模式，手的位置控制走位，握拳操控回旋镖
+- @docs/ai/expansion-plan.md —— 扩展方案（三关、新怪物、技能强化、Boss）和进度
 - docs/ai/guard-mode-plan.md —— 已被取代的站桩守卫方案，仅作历史记录
 - docs/ai/gesture-plan.md —— 已被取代的旧方案（MediaPipe），仅作历史记录
 

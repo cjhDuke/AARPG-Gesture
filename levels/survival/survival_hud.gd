@@ -35,8 +35,8 @@ func _process( _delta : float ) -> void:
 		trophy.frame = int( Time.get_ticks_msec() / 150 ) % 8
 
 
-func set_status( wave : int, total_waves : int, kills : int, best : int ) -> void:
-	status_label.text = "WAVE %d/%d  KILLS %d  BEST %d" % [ wave, total_waves, kills, best ]
+func set_status( stage : int, wave : int, total_waves : int, kills : int, best : int ) -> void:
+	status_label.text = "STAGE %d  WAVE %d/%d  KILLS %d  BEST %d" % [ stage, wave, total_waves, kills, best ]
 
 
 ## 背包显示：capacity 个苹果格子，前 count 个点亮，其余是暗色剪影

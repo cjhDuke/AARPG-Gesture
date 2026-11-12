@@ -6,17 +6,12 @@ signal enemy_killed
 signal enemy_destroyed_at( enemy : Enemy, hit_box : HitBox )
 signal wave_cleared
 
-const SLIME : PackedScene = preload("res://enemies/slime/slime.tscn")
-const GOBLIN : PackedScene = preload("res://enemies/goblin/goblin.tscn")
-
-## 波次表（想调难度只改这里）：史莱姆数、哥布林数、生成间隔（秒）
-const WAVES : Array[Dictionary] = [
-	{ "slimes": 5, "goblins": 0, "interval": 1.3 },
-	{ "slimes": 7, "goblins": 1, "interval": 1.1 },
-	{ "slimes": 7, "goblins": 3, "interval": 1.0 },
-	{ "slimes": 8, "goblins": 5, "interval": 0.9 },
-	{ "slimes": 10, "goblins": 7, "interval": 0.8 },
-]
+## 怪物类型名 -> 场景。波次表里的 "enemies" 用这里的名字计数。
+## 后续新怪物（bomb_slime、shield_goblin、archer_goblin、big_slime）在这里注册。
+const REGISTRY : Dictionary = {
+	"slime": preload("res://enemies/slime/slime.tscn"),
+	"goblin": preload("res://enemies/goblin/goblin.tscn"),
+}
 ## 生成位置离主角至少这么远（像素），最多重试 SPAWN_TRIES 次
 const MIN_SPAWN_DIST : float = 110.0
 const SPAWN_TRIES : int = 8
@@ -40,19 +35,34 @@ func _process( delta : float ) -> void:
 		_spawn( _queue.pop_back() )
 
 
-## index 从 0 开始
-func start_wave( index : int ) -> void:
-	var wave : Dictionary = WAVES[index]
+## 开始一波。wave 是关卡表里的一项：{ "enemies": { 类型名: 数量 }, "interval": 秒 }
+func start_wave( wave : Dictionary ) -> void:
 	_queue.clear()
-	for i in int( wave["slimes"] ):
-		_queue.append( SLIME )
-	for i in int( wave["goblins"] ):
-		_queue.append( GOBLIN )
+	var enemies : Dictionary = wave["enemies"]
+	for type_name : String in enemies:
+		for i in int( enemies[type_name] ):
+			_queue.append( _resolve_scene( type_name ) )
 	_queue.shuffle()
 	_interval = float( wave["interval"] )
 	_timer = 0.0
 	_alive = 0
 	_running = true
+
+
+## 额外生成一只怪（比如大史莱姆死后分裂）。scene_or_type 可以是 PackedScene 或注册表里的类型名。
+## 它计入存活数，没死之前这一波不算清完。要在 enemy_destroyed_at 的处理函数里调用，
+## 这样新怪会在波次清空判定之前计入。
+func spawn_extra( scene_or_type : Variant, pos : Vector2 ) -> Enemy:
+	var enemy : Enemy = _spawn( _resolve_scene( scene_or_type ) )
+	enemy.global_position = pos
+	return enemy
+
+
+func _resolve_scene( scene_or_type : Variant ) -> PackedScene:
+	if scene_or_type is PackedScene:
+		return scene_or_type
+	assert( REGISTRY.has( scene_or_type ), "未注册的怪物类型：%s" % scene_or_type )
+	return REGISTRY[scene_or_type]
 
 
 ## 终止当前波并清掉场上所有敌人
@@ -65,12 +75,14 @@ func clear() -> void:
 			c.queue_free()
 
 
-func _spawn( scene : PackedScene ) -> void:
+## 生成一只怪并计入存活数；默认放在边缘随机位置
+func _spawn( scene : PackedScene ) -> Enemy:
 	var enemy : Enemy = scene.instantiate()
 	enemy.enemy_destroyed.connect( _on_enemy_destroyed.bind( enemy ) )
 	enemy_parent.add_child( enemy )
 	enemy.global_position = _pick_spawn_position()
 	_alive += 1
+	return enemy
 
 
 ## ARENA_RECT 四条边内侧的随机位置，且离主角不少于 MIN_SPAWN_DIST
@@ -93,6 +105,6 @@ func _on_enemy_destroyed( hit_box : HitBox, enemy : Enemy ) -> void:
 	_alive -= 1
 	enemy_destroyed_at.emit( enemy, hit_box )
 	enemy_killed.emit()
-	if _queue.is_empty() and _alive <= 0:
+	if _running and _queue.is_empty() and _alive <= 0:
 		_running = false
 		wave_cleared.emit()

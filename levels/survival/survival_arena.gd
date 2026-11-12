@@ -1,5 +1,5 @@
 class_name SurvivalArena extends Level
-## 手引生存关卡：5 波敌人，清完胜利，血量归零失败
+## 手引生存关卡：按 StageData 的关卡表依次打各关的各波，同一场景内切关；全部清完胜利，血量归零失败
 
 const TITLE_SCENE : String = "res://ui/title/title_scene.tscn"
 ## 开局到第 1 波、以及每波清完到下一波之间的停顿（秒）
@@ -7,12 +7,17 @@ const START_DELAY : float = 1.0
 const WAVE_DELAY : float = 2.0
 ## 清波宝箱的位置：房间中心偏下，避开屏幕正中的 WAVE CLEAR 横幅
 const CHEST_POS := HandController.CENTER + Vector2( 0, 36 )
+## 切关后横幅显示的时间（秒），之后才开始第一波
+const STAGE_BANNER_TIME : float = 1.5
 
 @onready var spawner : WaveSpawner = $WaveSpawner
 @onready var controller : HandController = $HandController
 @onready var hud : SurvivalHud = $SurvivalHud
 @onready var wave_timer : Timer = $WaveTimer
 
+## 当前是第几关（StageData 里启用的关卡中的序号，从 0 开始）
+var stage : int = 0
+## 当前关的第几波（从 1 开始，0 表示还没开始）
 var wave : int = 0
 var kills : int = 0
 var _ended : bool = false
@@ -22,6 +27,12 @@ var loot : LootDropper
 var _chest : RewardChest
 ## 这一波主角是否受过伤（决定宝箱里有没有药水）
 var _wave_hurt : bool = false
+## 当前关的数据（StageData.get_stage）和图块地图节点
+var _stage_data : Dictionary
+var _map : Node
+var _map_path : String = ""
+## 每次重开 +1；关卡切换的协程醒来后用它判断这一局是否已被重开作废
+var _run_id : int = 0
 
 
 func _ready() -> void:
@@ -73,6 +84,8 @@ func _start_run() -> void:
 	for c in get_children():
 		if c is Boomerang:
 			c.queue_free()
+	_run_id += 1
+	_load_stage( 0 )
 	wave = 0
 	kills = 0
 	_ended = false
@@ -88,8 +101,33 @@ func _begin_wave() -> void:
 	wave += 1
 	_wave_hurt = false
 	hud.show_banner( "WAVE %d" % wave )
-	spawner.start_wave( wave - 1 )
+	spawner.start_wave( _stage_data["waves"][wave - 1] )
 	_update_status()
+
+
+## 切到第 n 关（只换数据、图块地图和音乐，不碰主角和背包）
+func _load_stage( n : int ) -> void:
+	stage = n
+	_stage_data = StageData.get_stage( n )
+	var path : String = _stage_data["tilemap"]
+	if path != _map_path or not is_instance_valid( _map ):
+		# 释放旧地图节点，实例化新场景放在同一位置（最底层）
+		if is_instance_valid( _map ):
+			_map.free()
+		_map = load( path ).instantiate()
+		_map_path = path
+		add_child( _map )
+		move_child( _map, 0 )
+	AudioManager.play_music( load( _stage_data["music"] ) )
+
+
+## 当前关的波数
+func _wave_total() -> int:
+	return _stage_data["waves"].size()
+
+
+func _is_last_stage() -> bool:
+	return stage >= StageData.stage_count() - 1
 
 
 func _on_enemy_killed() -> void:
@@ -101,7 +139,7 @@ func _on_enemy_killed() -> void:
 func _on_wave_cleared() -> void:
 	if _ended:
 		return
-	if wave >= WaveSpawner.WAVES.size():
+	if wave >= _wave_total() and _is_last_stage():
 		_end_run( true )
 	else:
 		_spawn_chest()
@@ -126,13 +164,51 @@ func _on_chest_finished() -> void:
 	_chest = null
 	if _ended:
 		return
-	wave_timer.start( WAVE_DELAY )
+	if wave >= _wave_total():
+		_advance_stage()
+	else:
+		wave_timer.start( WAVE_DELAY )
+
+
+## 关卡之间的钩子：阶段 D 在这里插入"强化三选一"（场地上出现台座，主角走上去选）。
+## 在淡出之前调用；目前立即返回。
+func _between_stages() -> void:
+	pass
+
+
+## 当前关清完且宝箱收走后：钩子 -> 淡出 -> 换关卡 -> 淡入 -> 横幅 -> 第一波。
+## 主角血量、背包、掉落统计都留在原节点上，不重置。
+func _advance_stage() -> void:
+	var id := _run_id
+	controller.enabled = false
+	await _between_stages()
+	if id != _run_id or _ended or not is_inside_tree():
+		return
+	await SceneTransition.fade_out()
+	if id != _run_id or _ended or not is_inside_tree():
+		return
+	loot.clear()
+	spawner.clear()
+	for c in get_children():
+		if c is Boomerang:
+			c.queue_free()
+	_load_stage( stage + 1 )
+	wave = 0
+	_player.velocity = Vector2.ZERO
+	_player.global_position = HandController.CENTER
+	_update_status()
+	await SceneTransition.fade_in()
+	if id != _run_id or _ended or not is_inside_tree():
+		return
+	controller.enabled = true
+	hud.show_banner( "STAGE %d - %s" % [ stage + 1, _stage_data["name"] ] )
+	wave_timer.start( STAGE_BANNER_TIME )
 
 
 ## 暂停菜单背包面板的内容
 func _bag_info() -> Dictionary:
 	return {
-		"status": "WAVE %d/%d   KILLS %d" % [ maxi( wave, 1 ), WaveSpawner.WAVES.size(), kills ],
+		"status": "STAGE %d  WAVE %d/%d   KILLS %d" % [ stage + 1, maxi( wave, 1 ), _wave_total(), kills ],
 		"rows": [
 			{ "region": Pickup.REGIONS[Pickup.Kind.APPLE], "name": "APPLE",
 				"value": "%d/%d" % [ loot.bag_apples, LootDropper.BAG_CAPACITY ], "note": "IN BAG - AUTO EAT" },
@@ -198,7 +274,6 @@ func _on_retry_pressed() -> void:
 	hud.hide_result()
 	get_tree().paused = false
 	PauseMenu.process_mode = Node.PROCESS_MODE_ALWAYS
-	AudioManager.play_music( music )
 	_start_run()
 
 
@@ -207,4 +282,4 @@ func _on_title_pressed() -> void:
 
 
 func _update_status() -> void:
-	hud.set_status( maxi( wave, 1 ), WaveSpawner.WAVES.size(), kills, RunStats.best_kills )
+	hud.set_status( stage + 1, maxi( wave, 1 ), _wave_total(), kills, RunStats.best_kills )
