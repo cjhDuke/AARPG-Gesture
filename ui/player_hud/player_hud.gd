@@ -18,6 +18,15 @@ func update_hp( _hp : int , _max_hp : int ) -> void:
 		pass
 	pass
 
+## 回血时让可见的心形闪一下（亮一下再恢复）
+func flash_heal() -> void:
+	for h in hearts:
+		if h.visible:
+			h.modulate = Color( 2.2, 2.2, 2.2 )
+			var tween := h.create_tween()
+			tween.tween_property( h, "modulate", Color.WHITE, 0.45 )
+
+
 func update_heart( _index : int, _hp : int ) -> void:
 	var _value : int = clampi( _hp - _index * 2, 0, 2)
 	hearts[ _index ].value = _value

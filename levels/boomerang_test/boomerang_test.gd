@@ -19,6 +19,7 @@ const HOME_SPEED : float = 90.0
 @onready var controller : HandController = $HandController
 
 var _player : Player
+var loot : LootDropper
 ## 每个位置当前的靶子（被打死、等待重生时为 null）
 var _targets : Array[Enemy] = []
 
@@ -40,6 +41,13 @@ func _ready() -> void:
 	controller.enabled = true
 	controller.reset()
 
+	# 掉落：练习场只掉宝石（用镖打死靶子才掉），用来练"用镖捡东西"
+	loot = LootDropper.new()
+	loot.name = "LootDropper"
+	loot.apples_enabled = false
+	loot.controller = controller
+	add_child( loot )
+
 	# 手影：画在地板之上、角色之下
 	var ghost := HandGhost.new()
 	ghost.name = "HandGhost"
@@ -51,6 +59,7 @@ func _ready() -> void:
 
 
 func _free_level() -> void:
+	loot.clear()
 	controller.release_player()
 	var camera : Camera2D = _player.get_node( "Camera2D" )
 	camera.top_level = false
@@ -70,12 +79,13 @@ func _spawn_target( index : int ) -> void:
 	var enemy : Enemy = SLIME.instantiate()
 	# 逼近速度设成 0：靶子站着不动，被击退后由 _process 拉回原位
 	( enemy.get_node( "EnemyStateMachine/Approach" ) as EnemyStateApproach ).speed = 0.0
-	enemy.enemy_destroyed.connect( _on_target_destroyed.bind( index ) )
+	enemy.enemy_destroyed.connect( _on_target_destroyed.bind( index, enemy ) )
 	add_child( enemy )
 	enemy.global_position = TARGET_HOMES[index]
 	_targets[index] = enemy
 
 
-func _on_target_destroyed( _hit_box : HitBox, index : int ) -> void:
+func _on_target_destroyed( hit_box : HitBox, index : int, enemy : Enemy ) -> void:
+	loot.handle_enemy_destroyed( enemy, hit_box )
 	_targets[index] = null
 	get_tree().create_timer( RESPAWN_DELAY ).timeout.connect( _spawn_target.bind( index ) )

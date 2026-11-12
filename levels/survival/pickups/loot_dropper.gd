@@ -1,0 +1,67 @@
+class_name LootDropper extends Node
+## 掉落规则：回旋镖致命一击必掉宝石；苹果按敌人的 apple_drop_chance 掉，带保底。
+## 掉落物加到本节点的父节点（关卡根）下，和主角、敌人一起按 y 排序。
+## 关卡重开 / 释放时调用 clear()。
+
+## 回旋镖击杀掉宝石的概率
+const GEM_CHANCE_BOOMERANG : float = 1.0
+## 连续这么多次击杀没掉苹果，则这一次必掉
+const APPLE_PITY_KILLS : int = 10
+## 同时掉宝石和苹果时，两者的水平错开距离（像素）
+const SPLIT_OFFSET : float = 8.0
+
+## 为 false 时不掉苹果（回旋镖练习场只掉宝石）
+var apples_enabled : bool = true
+## 念力来源（宝石 / 药水用）
+var controller : HandController
+
+var _kills_since_apple : int = 0
+
+
+## 敌人被消灭：hit_box 是致命一击的判定框（属于 Boomerang 节点则是回旋镖击杀）
+func handle_enemy_destroyed( enemy : Enemy, hit_box : HitBox ) -> void:
+	var by_boomerang := is_instance_valid( hit_box ) and hit_box.get_parent() is Boomerang
+	var gem := by_boomerang and randf() < GEM_CHANCE_BOOMERANG
+	var apple := false
+	if apples_enabled:
+		_kills_since_apple += 1
+		if randf() < enemy.apple_drop_chance or _kills_since_apple >= APPLE_PITY_KILLS:
+			apple = true
+			_kills_since_apple = 0
+	var pos := enemy.global_position
+	if gem and apple:
+		spawn_pickup( Pickup.Kind.GEM, pos, pos + Vector2( -SPLIT_OFFSET, 0 ) )
+		spawn_pickup( Pickup.Kind.APPLE, pos, pos + Vector2( SPLIT_OFFSET, 0 ) )
+	elif gem:
+		spawn_pickup( Pickup.Kind.GEM, pos, pos )
+	elif apple:
+		spawn_pickup( Pickup.Kind.APPLE, pos, pos )
+
+
+## 生成一个掉落物，从 from 弹到 dest（都会夹进 ARENA_RECT 内）
+func spawn_pickup( kind : int, from : Vector2, dest : Vector2, lifetime : float = Pickup.DEFAULT_LIFETIME ) -> Pickup:
+	var parent := get_parent()
+	if parent == null:
+		return null
+	var p := Pickup.new()
+	p.kind = kind
+	p.lifetime = lifetime
+	p.controller = controller
+	parent.add_child( p )
+	p.global_position = _clamp_to_arena( from )
+	p.pop_to( _clamp_to_arena( dest ) )
+	return p
+
+
+## 清掉场上所有掉落物、飘字和保底计数
+func clear() -> void:
+	_kills_since_apple = 0
+	if not is_inside_tree():
+		return
+	for n in get_tree().get_nodes_in_group( "loot_fx" ):
+		n.queue_free()
+
+
+func _clamp_to_arena( p : Vector2 ) -> Vector2:
+	var r := HandController.ARENA_RECT
+	return Vector2( clampf( p.x, r.position.x, r.end.x ), clampf( p.y, r.position.y, r.end.y ) )

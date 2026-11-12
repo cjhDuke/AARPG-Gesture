@@ -9,6 +9,8 @@ const DIR_4 = [ Vector2.RIGHT , Vector2.DOWN , Vector2.LEFT , Vector2.UP ]
 @export var hp : int = 3
 ## 生成时的淡入时长；淡入期间无敌、不造成伤害
 @export var fade_in_time : float = 0.4
+## 被消灭时掉苹果的概率（LootDropper 读取；另有保底）
+@export var apple_drop_chance : float = 0.08
 
 var cardinal_direction : Vector2 = Vector2.DOWN
 var direction : Vector2 = Vector2.ZERO

@@ -5,6 +5,8 @@ const TITLE_SCENE : String = "res://ui/title/title_scene.tscn"
 ## 开局到第 1 波、以及每波清完到下一波之间的停顿（秒）
 const START_DELAY : float = 1.0
 const WAVE_DELAY : float = 2.0
+## 清波宝箱的位置：房间中心偏下，避开屏幕正中的 WAVE CLEAR 横幅
+const CHEST_POS := HandController.CENTER + Vector2( 0, 36 )
 
 @onready var spawner : WaveSpawner = $WaveSpawner
 @onready var controller : HandController = $HandController
@@ -16,6 +18,10 @@ var kills : int = 0
 var _ended : bool = false
 var _player : Player
 var _death_fx : DeathFx
+var loot : LootDropper
+var _chest : RewardChest
+## 这一波主角是否受过伤（决定宝箱里有没有药水）
+var _wave_hurt : bool = false
 
 
 func _ready() -> void:
@@ -23,11 +29,17 @@ func _ready() -> void:
 	_player = PlayerManager.player
 	_player.can_move = true
 	_player.died.connect( _on_player_died )
+	_player.player_damaged.connect( _on_player_damaged )
 	# 镜头固定在房间中心，不跟着被击退的主角晃
 	var camera : Camera2D = _player.get_node( "Camera2D" )
 	camera.top_level = true
 	camera.global_position = HandController.CENTER
 
+	loot = LootDropper.new()
+	loot.name = "LootDropper"
+	loot.controller = controller
+	add_child( loot )
+	spawner.enemy_destroyed_at.connect( loot.handle_enemy_destroyed )
 	spawner.enemy_killed.connect( _on_enemy_killed )
 	spawner.wave_cleared.connect( _on_wave_cleared )
 	wave_timer.timeout.connect( _begin_wave )
@@ -38,6 +50,7 @@ func _ready() -> void:
 
 func _free_level() -> void:
 	_clear_death_fx()
+	_clear_rewards()
 	controller.release_player()
 	var camera : Camera2D = _player.get_node( "Camera2D" )
 	camera.top_level = false
@@ -48,6 +61,7 @@ func _free_level() -> void:
 ## 开始（或重新开始）一局
 func _start_run() -> void:
 	_clear_death_fx()
+	_clear_rewards()
 	spawner.set_process( true )
 	wave_timer.stop()
 	spawner.clear()
@@ -67,6 +81,7 @@ func _start_run() -> void:
 
 func _begin_wave() -> void:
 	wave += 1
+	_wave_hurt = false
 	hud.show_banner( "WAVE %d" % wave )
 	spawner.start_wave( wave - 1 )
 	_update_status()
@@ -84,8 +99,38 @@ func _on_wave_cleared() -> void:
 	if wave >= WaveSpawner.WAVES.size():
 		_end_run( true )
 	else:
-		_player.update_hp( 1 )
-		wave_timer.start( WAVE_DELAY )
+		_spawn_chest()
+
+
+func _on_player_damaged( _hit_box : HitBox ) -> void:
+	_wave_hurt = true
+
+
+## 清波奖励：房间中心淡入宝箱，主角走近开箱，箱子消失后才开始下一波
+func _spawn_chest() -> void:
+	hud.show_banner( "WAVE CLEAR" )
+	_chest = RewardChest.new()
+	_chest.loot = loot
+	_chest.flawless = not _wave_hurt
+	_chest.finished.connect( _on_chest_finished )
+	add_child( _chest )
+	_chest.global_position = CHEST_POS
+
+
+func _on_chest_finished() -> void:
+	_chest = null
+	if _ended:
+		return
+	wave_timer.start( WAVE_DELAY )
+
+
+## 清掉宝箱、掉落物和飘字
+func _clear_rewards() -> void:
+	if is_instance_valid( _chest ):
+		_chest.queue_free()
+	_chest = null
+	if loot != null:
+		loot.clear()
 
 
 ## 主角死亡：先放死亡动效（慢动作 + 闪白 + 倒下 + 冒烟，见 death_fx.gd），播完再弹 GAME OVER 面板。
@@ -96,6 +141,7 @@ func _on_player_died() -> void:
 		return
 	_ended = true
 	wave_timer.stop()
+	_clear_rewards()
 	spawner.set_process( false )
 	controller.enabled = false
 	PauseMenu.process_mode = Node.PROCESS_MODE_DISABLED
@@ -121,6 +167,7 @@ func _clear_death_fx() -> void:
 func _end_run( victory : bool ) -> void:
 	_ended = true
 	wave_timer.stop()
+	_clear_rewards()
 	controller.enabled = false
 	# 结算期间不允许 Esc 打开暂停菜单
 	PauseMenu.process_mode = Node.PROCESS_MODE_DISABLED

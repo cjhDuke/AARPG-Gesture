@@ -2,6 +2,8 @@ class_name WaveSpawner extends Node2D
 ## 波次表 + 生成位置。一波的敌人按间隔陆续生成，全部被消灭后发 wave_cleared。
 
 signal enemy_killed
+## 敌人被消灭（带上是哪个敌人、致命一击的判定框），先于 enemy_killed / wave_cleared 发出，给掉落用
+signal enemy_destroyed_at( enemy : Enemy, hit_box : HitBox )
 signal wave_cleared
 
 const SLIME : PackedScene = preload("res://enemies/slime/slime.tscn")
@@ -65,7 +67,7 @@ func clear() -> void:
 
 func _spawn( scene : PackedScene ) -> void:
 	var enemy : Enemy = scene.instantiate()
-	enemy.enemy_destroyed.connect( _on_enemy_destroyed )
+	enemy.enemy_destroyed.connect( _on_enemy_destroyed.bind( enemy ) )
 	enemy_parent.add_child( enemy )
 	enemy.global_position = _pick_spawn_position()
 	_alive += 1
@@ -87,8 +89,9 @@ func _pick_spawn_position() -> Vector2:
 	return pos
 
 
-func _on_enemy_destroyed( _hit_box : HitBox ) -> void:
+func _on_enemy_destroyed( hit_box : HitBox, enemy : Enemy ) -> void:
 	_alive -= 1
+	enemy_destroyed_at.emit( enemy, hit_box )
 	enemy_killed.emit()
 	if _queue.is_empty() and _alive <= 0:
 		_running = false

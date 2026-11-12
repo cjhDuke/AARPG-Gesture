@@ -135,6 +135,12 @@ func reset() -> void:
 	_update_hud()
 
 
+## 回复念力（amount 为 0-1 的比例，结果夹在 0-1），宝石 / 药水用
+func add_psi( amount : float ) -> void:
+	psi = clampf( psi + amount, 0.0, 1.0 )
+	_update_hud()
+
+
 ## 关卡卸载时复原主角状态
 func release_player() -> void:
 	_shutdown_control()
