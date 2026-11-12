@@ -77,7 +77,8 @@ def _text_panel(info):
         "fps     : %.1f" % info["fps"],
         "proc    : %.1f ms" % info["proc_ms"],
         "background: %s" % ("OK" if info["calibrated"] else
-                            "capturing..." if info["calibrating"] else "NONE - press c"),
+                            ("HAND OUT  %d" % info["calib_countdown"]) if info.get("calib_countdown") else
+                            "capturing - keep hand out" if info["calibrating"] else "NONE - press c"),
         "",
         "[c] capture background (hand OUT)",
         "[r] move ROI (keep face out)",
