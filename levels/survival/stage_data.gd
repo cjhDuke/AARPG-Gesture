@@ -9,6 +9,9 @@ class_name StageData extends RefCounted
 ##   music    背景音乐路径
 ##   waves    波次数组，每波 { "enemies": { 类型名: 数量 }, "interval": 生成间隔秒 }
 ##            类型名见 WaveSpawner.REGISTRY
+##   archer_spots  （可选）弓手站位（世界坐标）：在高台上，每块高台一个；生成弓手时优先站到空闲站位上不动，
+##            站位都被占着就按普通方式生成。站位要和图块地图里的高台对上（草地：GrasslandMap.LEDGE_TILES，
+##            站位在高台中间一列、离上边界 40 像素处，在 HandController.CURSOR_RECT 之内镖才够得着）
 
 const STAGES : Array[Dictionary] = [
 	{
@@ -27,9 +30,9 @@ const STAGES : Array[Dictionary] = [
 		"name": "GRASSLAND",
 		"type": "waves",
 		"enabled": true,
-		# 占位：阶段 C 会换成草地图块（Grass-01）和 grass.mp3
-		"tilemap": "res://tile_maps/survival_dungeon.tscn",
-		"music": "res://levels/survival/dungeon.mp3",
+		"tilemap": "res://tile_maps/survival_grassland.tscn",
+		"music": "res://levels/survival/grass.mp3",
+		"archer_spots": [ Vector2( 176, 40 ), Vector2( 336, 40 ) ],
 		"waves": [
 			{ "enemies": { "slime": 6, "goblin": 3, "shield_goblin": 1, "archer_goblin": 1 }, "interval": 1.0 },
 			{ "enemies": { "slime": 6, "goblin": 4, "bomb_slime": 2, "shield_goblin": 2, "archer_goblin": 2 }, "interval": 0.9 },

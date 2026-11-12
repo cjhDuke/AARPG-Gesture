@@ -4,6 +4,8 @@ signal direction_changed( new_direction : Vector2)
 signal enemy_damaged( hit_box : HitBox )
 signal enemy_destroyed( hit_box : HitBox )
 
+## 高台碰撞层（project.godot 里命名为 Ledge）
+const LEDGE_LAYER : int = 32
 const DIR_4 = [ Vector2.RIGHT , Vector2.DOWN , Vector2.LEFT , Vector2.UP ]
 
 @export var hp : int = 3
@@ -32,6 +34,8 @@ var spawning : bool = false
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
+	# 高台（Ledge 层）挡敌人；地牢里没有这一层的物体，不影响
+	collision_mask |= LEDGE_LAYER
 	state_machine.initialize( self )
 	player = PlayerManager.player 
 	hurt_box.Damaged.connect( _take_damage )

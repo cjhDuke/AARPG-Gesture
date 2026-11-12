@@ -133,6 +133,9 @@ func _load_stage( n : int ) -> void:
 		_map_path = path
 		add_child( _map )
 		move_child( _map, 0 )
+	# 高台和弓手站位跟着当前关的图块地图走（地牢没有高台）
+	spawner.blocked_rects = _map.get_ledge_rects() if _map.has_method( "get_ledge_rects" ) else ( [] as Array[Rect2] )
+	spawner.archer_spots.assign( _stage_data.get( "archer_spots", [] ) )
 	AudioManager.play_music( load( _stage_data["music"] ) )
 
 

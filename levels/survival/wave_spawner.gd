@@ -18,6 +18,8 @@ const REGISTRY : Dictionary = {
 ## 生成位置离主角至少这么远（像素），最多重试 SPAWN_TRIES 次
 const MIN_SPAWN_DIST : float = 110.0
 const SPAWN_TRIES : int = 8
+## 生成位置离 blocked_rects 至少这么远（像素，比敌人碰撞体半径略大）
+const SPAWN_BLOCK_MARGIN : float = 14.0
 
 ## 敌人加到父节点（关卡根）下，和主角同层才能一起按 y 排序。本节点需放在原点。
 @onready var enemy_parent : Node = get_parent()
@@ -30,6 +32,11 @@ var _running : bool = false
 ## 每次 start_wave +1；敌人生成时记下当时的值，只有属于当前波的敌人死亡才扣存活数
 ## （练习场在两波之间手动生成的怪不会干扰下一波的清波判定）
 var _wave_id : int = 0
+## 高台等敌人不能出生的矩形（世界坐标，由关卡按当前图块地图设置；周围再留 SPAWN_BLOCK_MARGIN）
+var blocked_rects : Array[Rect2] = []
+## 弓手站位（高台上，来自关卡表 archer_spots）。生成弓手时优先放到空闲站位上并钉住不动
+var archer_spots : Array[Vector2] = []
+var _spot_owners : Array[Enemy] = []
 
 
 func _process( delta : float ) -> void:
@@ -76,6 +83,7 @@ func clear() -> void:
 	_running = false
 	_queue.clear()
 	_alive = 0
+	_spot_owners.clear()
 	for c in enemy_parent.get_children():
 		if c is Enemy:
 			c.queue_free()
@@ -91,12 +99,33 @@ func _clear_projectiles() -> void:
 ## 生成一只怪并计入存活数；默认放在边缘随机位置
 func _spawn( scene : PackedScene, pos : Variant = null ) -> Enemy:
 	var enemy : Enemy = scene.instantiate()
+	if enemy is ArcherGoblin:
+		var spot : int = _free_archer_spot()
+		if spot >= 0:
+			# 站位空着：站到高台上，原地不动
+			pos = archer_spots[spot]
+			var archer := enemy as ArcherGoblin
+			archer.stationary = true
+			archer.pinned = true
+			archer.pin_position = pos
+			_spot_owners[spot] = archer
 	enemy.set_meta( "wave_id", _wave_id )
 	enemy.enemy_destroyed.connect( _on_enemy_destroyed.bind( enemy ) )
 	_alive += 1
 	# 敌人被打死的回调里（物理查询刷新期间）直接 add_child 会报错，所以统一延后到本帧末加入场景
 	_add_enemy.call_deferred( enemy, pos if pos != null else pick_spawn_position() )
 	return enemy
+
+
+## 第一个空闲的弓手站位（上面没有活着的弓手）；没有返回 -1
+func _free_archer_spot() -> int:
+	while _spot_owners.size() < archer_spots.size():
+		_spot_owners.append( null )
+	for i in archer_spots.size():
+		var owner_enemy : Enemy = _spot_owners[i]
+		if owner_enemy == null or not is_instance_valid( owner_enemy ) or owner_enemy._is_defeated:
+			return i
+	return -1
 
 
 func _add_enemy( enemy : Enemy, pos : Vector2 ) -> void:
@@ -132,9 +161,23 @@ func pick_spawn_position() -> Vector2:
 			1: pos = Vector2( randf_range( rect.position.x, rect.end.x ), rect.end.y )
 			2: pos = Vector2( rect.position.x, randf_range( rect.position.y, rect.end.y ) )
 			_: pos = Vector2( rect.end.x, randf_range( rect.position.y, rect.end.y ) )
+		if _is_blocked( pos ):
+			continue
 		if pos.distance_to( player_pos ) >= MIN_SPAWN_DIST:
 			break
+	# 8 次都不理想时，至少要保证不在高台里
+	var guard : int = 0
+	while _is_blocked( pos ) and guard < 64:
+		guard += 1
+		pos = Vector2( randf_range( rect.position.x, rect.end.x ), rect.end.y if randi() % 2 == 0 else rect.position.y )
 	return pos
+
+
+func _is_blocked( pos : Vector2 ) -> bool:
+	for r in blocked_rects:
+		if r.grow( SPAWN_BLOCK_MARGIN ).has_point( pos ):
+			return true
+	return false
 
 
 func _on_enemy_destroyed( hit_box : HitBox, enemy : Enemy ) -> void:

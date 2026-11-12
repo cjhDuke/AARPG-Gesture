@@ -1407,7 +1407,7 @@ _data = {
 
 [node name="Player" type="CharacterBody2D" unique_id=1864871943]
 z_index = 2
-collision_mask = 16
+collision_mask = 48
 motion_mode = 1
 wall_min_slide_angle = 0.17453292
 script = ExtResource("1_4ntmi")

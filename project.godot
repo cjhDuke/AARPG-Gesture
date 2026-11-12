@@ -93,6 +93,7 @@ ability={
 2d_physics/layer_2="PlayerHurt"
 2d_physics/layer_5="Walls"
 2d_navigation/layer_5="Walls"
+2d_physics/layer_6="Ledge"
 2d_physics/layer_9="Enemy"
 
 [physics]

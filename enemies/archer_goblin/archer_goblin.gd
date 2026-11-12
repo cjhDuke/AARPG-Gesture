@@ -19,6 +19,10 @@ const BOW_SOUND : AudioStream = preload( "res://enemies/archer_goblin/bow_fire.w
 ## 完全不动（高台弓手）
 @export var stationary : bool = false
 
+## 钉在高台站位上（WaveSpawner 设置）：不会被击退位移推下高台，也不和高台碰撞
+var pinned : bool = false
+var pin_position : Vector2 = Vector2.ZERO
+
 ## 正在预警：瞄准线朝 aim_dir 画
 var aiming : bool = false
 var aim_dir : Vector2 = Vector2.DOWN
@@ -28,9 +32,19 @@ var _marks : Node2D
 
 func _ready() -> void:
 	super._ready()
+	if pinned:
+		# 站位在高台碰撞体里面，所以不检测高台层
+		collision_mask &= ~LEDGE_LAYER
 	_marks = Node2D.new()
 	_marks.draw.connect( _draw_aim )
 	add_child( _marks )
+
+
+func _physics_process( delta : float ) -> void:
+	super._physics_process( delta )
+	if pinned and not _is_defeated:
+		global_position = pin_position
+		velocity = Vector2.ZERO
 
 
 func _process( _delta : float ) -> void:
