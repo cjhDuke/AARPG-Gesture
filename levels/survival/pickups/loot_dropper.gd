@@ -26,6 +26,9 @@ var controller : HandController
 ## 背包里的苹果：满血时捡到的苹果存这里，受伤后自动吃
 var bag_apples : int = 0
 
+## 本局各类掉落物的拾取次数（下标是 Pickup.Kind），暂停菜单的背包面板用
+var picked : Array[int] = [ 0, 0, 0 ]
+
 var _kills_since_apple : int = 0
 var _eat_timer : float = 0.0
 
@@ -90,6 +93,7 @@ func spawn_pickup( kind : int, from : Vector2, dest : Vector2, lifetime : float 
 	p.lifetime = lifetime
 	p.controller = controller
 	p.loot = self
+	p.collected.connect( func( k : int ) -> void: picked[k] += 1 )
 	parent.add_child( p )
 	p.global_position = _clamp_to_arena( from )
 	p.pop_to( _clamp_to_arena( dest ) )
@@ -101,6 +105,7 @@ func clear() -> void:
 	_kills_since_apple = 0
 	_eat_timer = 0.0
 	bag_apples = 0
+	picked = [ 0, 0, 0 ]
 	bag_changed.emit( bag_apples, BAG_CAPACITY )
 	if not is_inside_tree():
 		return

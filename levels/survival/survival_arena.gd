@@ -41,6 +41,8 @@ func _ready() -> void:
 	add_child( loot )
 	loot.bag_changed.connect( hud.set_bag )
 	hud.set_bag( 0, LootDropper.BAG_CAPACITY )
+	PauseMenu.bag_provider = _bag_info
+	PauseMenu.restart_handler = _start_run
 	spawner.enemy_destroyed_at.connect( loot.handle_enemy_destroyed )
 	spawner.enemy_killed.connect( _on_enemy_killed )
 	spawner.wave_cleared.connect( _on_wave_cleared )
@@ -51,6 +53,7 @@ func _ready() -> void:
 
 
 func _free_level() -> void:
+	PauseMenu.clear_level_hooks()
 	_clear_death_fx()
 	_clear_rewards()
 	controller.release_player()
@@ -124,6 +127,21 @@ func _on_chest_finished() -> void:
 	if _ended:
 		return
 	wave_timer.start( WAVE_DELAY )
+
+
+## 暂停菜单背包面板的内容
+func _bag_info() -> Dictionary:
+	return {
+		"status": "WAVE %d/%d   KILLS %d" % [ maxi( wave, 1 ), WaveSpawner.WAVES.size(), kills ],
+		"rows": [
+			{ "region": Pickup.REGIONS[Pickup.Kind.APPLE], "name": "APPLE",
+				"value": "%d/%d" % [ loot.bag_apples, LootDropper.BAG_CAPACITY ], "note": "IN BAG - AUTO EAT" },
+			{ "region": Pickup.REGIONS[Pickup.Kind.GEM], "name": "GEM",
+				"value": "x%d" % loot.picked[Pickup.Kind.GEM], "note": "PICKED - PSI +25%" },
+			{ "region": Pickup.REGIONS[Pickup.Kind.POTION], "name": "POTION",
+				"value": "x%d" % loot.picked[Pickup.Kind.POTION], "note": "PICKED - HP +2, PSI MAX" },
+		],
+	}
 
 
 ## 清掉宝箱、掉落物和飘字
