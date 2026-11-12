@@ -7,10 +7,13 @@ signal enemy_destroyed_at( enemy : Enemy, hit_box : HitBox )
 signal wave_cleared
 
 ## 怪物类型名 -> 场景。波次表里的 "enemies" 用这里的名字计数。
-## 后续新怪物（bomb_slime、shield_goblin、archer_goblin、big_slime）在这里注册。
 const REGISTRY : Dictionary = {
 	"slime": preload("res://enemies/slime/slime.tscn"),
 	"goblin": preload("res://enemies/goblin/goblin.tscn"),
+	"bomb_slime": preload("res://enemies/bomb_slime/bomb_slime.tscn"),
+	"shield_goblin": preload("res://enemies/shield_goblin/shield_goblin.tscn"),
+	"archer_goblin": preload("res://enemies/archer_goblin/archer_goblin.tscn"),
+	"big_slime": preload("res://enemies/big_slime/big_slime.tscn"),
 }
 ## 生成位置离主角至少这么远（像素），最多重试 SPAWN_TRIES 次
 const MIN_SPAWN_DIST : float = 110.0
@@ -57,8 +60,7 @@ func start_wave( wave : Dictionary ) -> void:
 ## 它计入存活数，没死之前这一波不算清完。要在 enemy_destroyed_at 的处理函数里调用，
 ## 这样新怪会在波次清空判定之前计入。
 func spawn_extra( scene_or_type : Variant, pos : Vector2 ) -> Enemy:
-	var enemy : Enemy = _spawn( _resolve_scene( scene_or_type ) )
-	enemy.global_position = pos
+	var enemy : Enemy = _spawn( _resolve_scene( scene_or_type ), pos )
 	return enemy
 
 
@@ -77,17 +79,32 @@ func clear() -> void:
 	for c in enemy_parent.get_children():
 		if c is Enemy:
 			c.queue_free()
+	_clear_projectiles()
+
+
+## 清掉场上所有敌方投射物（节点组 enemy_projectile，见 enemy_projectile.gd）
+func _clear_projectiles() -> void:
+	for n in get_tree().get_nodes_in_group( "enemy_projectile" ):
+		n.queue_free()
 
 
 ## 生成一只怪并计入存活数；默认放在边缘随机位置
-func _spawn( scene : PackedScene ) -> Enemy:
+func _spawn( scene : PackedScene, pos : Variant = null ) -> Enemy:
 	var enemy : Enemy = scene.instantiate()
 	enemy.set_meta( "wave_id", _wave_id )
 	enemy.enemy_destroyed.connect( _on_enemy_destroyed.bind( enemy ) )
-	enemy_parent.add_child( enemy )
-	enemy.global_position = pick_spawn_position()
 	_alive += 1
+	# 敌人被打死的回调里（物理查询刷新期间）直接 add_child 会报错，所以统一延后到本帧末加入场景
+	_add_enemy.call_deferred( enemy, pos if pos != null else pick_spawn_position() )
 	return enemy
+
+
+func _add_enemy( enemy : Enemy, pos : Vector2 ) -> void:
+	if not is_instance_valid( enemy_parent ) or not enemy_parent.is_inside_tree():
+		enemy.queue_free()
+		return
+	enemy_parent.add_child( enemy )
+	enemy.global_position = pos
 
 
 ## 练习场调试：这一波正在进行时，立刻清掉场上所有敌人和待生成队列，并按正常路径发 wave_cleared
@@ -123,8 +140,10 @@ func pick_spawn_position() -> Vector2:
 func _on_enemy_destroyed( hit_box : HitBox, enemy : Enemy ) -> void:
 	if enemy.get_meta( "wave_id", -1 ) == _wave_id:
 		_alive -= 1
+	enemy.on_defeated( self )
 	enemy_destroyed_at.emit( enemy, hit_box )
 	enemy_killed.emit()
 	if _running and _queue.is_empty() and _alive <= 0:
 		_running = false
+		_clear_projectiles()
 		wave_cleared.emit()

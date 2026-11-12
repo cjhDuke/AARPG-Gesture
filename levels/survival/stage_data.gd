@@ -19,8 +19,8 @@ const STAGES : Array[Dictionary] = [
 		"music": "res://levels/survival/dungeon.mp3",
 		"waves": [
 			{ "enemies": { "slime": 5 }, "interval": 1.3 },
-			{ "enemies": { "slime": 7, "goblin": 2 }, "interval": 1.1 },
-			{ "enemies": { "slime": 8, "goblin": 4 }, "interval": 1.0 },
+			{ "enemies": { "slime": 6, "goblin": 2, "bomb_slime": 2 }, "interval": 1.1 },
+			{ "enemies": { "slime": 6, "goblin": 3, "bomb_slime": 3, "big_slime": 1 }, "interval": 1.0 },
 		],
 	},
 	{
@@ -31,9 +31,9 @@ const STAGES : Array[Dictionary] = [
 		"tilemap": "res://tile_maps/survival_dungeon.tscn",
 		"music": "res://levels/survival/dungeon.mp3",
 		"waves": [
-			{ "enemies": { "slime": 8, "goblin": 4 }, "interval": 1.0 },
-			{ "enemies": { "slime": 8, "goblin": 6 }, "interval": 0.9 },
-			{ "enemies": { "slime": 10, "goblin": 7 }, "interval": 0.8 },
+			{ "enemies": { "slime": 6, "goblin": 3, "shield_goblin": 1, "archer_goblin": 1 }, "interval": 1.0 },
+			{ "enemies": { "slime": 6, "goblin": 4, "bomb_slime": 2, "shield_goblin": 2, "archer_goblin": 2 }, "interval": 0.9 },
+			{ "enemies": { "slime": 6, "goblin": 5, "bomb_slime": 3, "shield_goblin": 3, "archer_goblin": 2, "big_slime": 2 }, "interval": 0.8 },
 		],
 	},
 	{

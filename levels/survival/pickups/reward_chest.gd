@@ -56,7 +56,9 @@ func _ready() -> void:
 	rect.size = BODY_SIZE
 	shape.shape = rect
 	_body.add_child( shape )
-	add_child( _body )
+	# 宝箱常在敌人被打死的物理回调里生成，此时直接加入碰撞体会报 "Can't change this state while flushing queries"，
+	# 所以延后到本帧末加入场景（_process 里要判断 _body 是否已入树）
+	add_child.call_deferred( _body )
 	modulate.a = 0.0
 	var tween := create_tween()
 	tween.tween_property( self, "modulate:a", 1.0, FADE_IN_TIME )
@@ -67,7 +69,7 @@ func _process( _delta : float ) -> void:
 	var player := PlayerManager.player
 	if player == null:
 		return
-	if _body.collision_layer == 0 and not _player_overlaps_body( player ):
+	if _body.is_inside_tree() and _body.collision_layer == 0 and not _player_overlaps_body( player ):
 		_body.collision_layer = WALL_LAYER
 	if not _armed or is_opened or player.is_dead:
 		return

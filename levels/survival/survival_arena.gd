@@ -36,7 +36,7 @@ var _map : Node
 var _map_path : String = ""
 ## 每次重开 +1；关卡切换的协程醒来后用它判断这一局是否已被重开作废
 var _run_id : int = 0
-## _advance_stage 协程正在跑（淡出 / 换关 / 淡入）；期间练习场的跳关会被忽略，免得两条流程同时推进
+## _advance_stage 协程正在跑（淡出 / 换关 / 淡入）；重开和练习场跳关会递增 _run_id 作废它，并把本标记清掉
 var _stage_changing : bool = false
 
 
@@ -96,6 +96,9 @@ func _start_run() -> void:
 		if c is Boomerang:
 			c.queue_free()
 	_run_id += 1
+	_stage_changing = false
+	# 如果是在切关淡出 / 淡入过程中重开的，旧协程不会再醒来收尾，这里把画面恢复成完全显示
+	SceneTransition.reset()
 	_load_stage( 0 )
 	wave = 0
 	kills = 0
@@ -192,8 +195,11 @@ func _between_stages() -> void:
 ## 主角血量、背包、掉落统计都留在原节点上，不重置。
 func _advance_stage() -> void:
 	_stage_changing = true
+	var id := _run_id
 	await _advance_stage_flow()
-	_stage_changing = false
+	# 流程被重开 / 跳关作废时，标志已由那边清掉，不要覆盖
+	if id == _run_id:
+		_stage_changing = false
 
 
 func _advance_stage_flow() -> void:
@@ -224,11 +230,14 @@ func _advance_stage_flow() -> void:
 
 
 ## 练习场调试：立刻切到第 n 关（清敌人、掉落物、宝箱，主角回中心，从第 1 波开始，不淡入淡出）。
-## 递增 _run_id 让还没醒来的旧协程作废；正在淡出 / 淡入换关，或这一局已结束时忽略
+## 递增 _run_id 让还没醒来的旧协程作废；正在淡出 / 淡入换关时也可以跳（会把画面恢复显示）；这一局已结束时忽略
 func debug_goto_stage( n : int ) -> void:
-	if _ended or _stage_changing:
+	if _ended:
 		return
 	_run_id += 1
+	_stage_changing = false
+	SceneTransition.reset()
+	controller.enabled = true
 	wave_timer.stop()
 	_clear_rewards()
 	spawner.clear()

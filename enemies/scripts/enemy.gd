@@ -85,11 +85,30 @@ func anim_direction() -> String:
 func _take_damage( hit_box : HitBox ) ->void:
 	if invulnerable == true and not ( stunned and hit_box.ignores_stun_invulnerability ):
 		return
+	if can_block( hit_box ):
+		on_blocked( hit_box )
+		return
 	hp -= hit_box.damage
 	if hp > 0:
 		enemy_damaged.emit( hit_box )
 	else:
 		enemy_destroyed.emit( hit_box )
+
+
+## 这次伤害能否被挡住（盾牌哥布林重写）；挡住则不掉血、不进硬直
+func can_block( _hit_box : HitBox ) -> bool:
+	return false
+
+
+## 挡住后的表现（盾牌哥布林重写）
+func on_blocked( _hit_box : HitBox ) -> void:
+	pass
+
+
+## 被消灭、且已计入波次存活数之后，由 WaveSpawner 调用（先于 enemy_destroyed_at 发出，
+## 所以在这里 spawner.spawn_extra() 生成的怪赶得上清波判定）。大史莱姆在这里分裂
+func on_defeated( _spawner : Node ) -> void:
+	pass
 
 
 func mark_defeated() -> void:

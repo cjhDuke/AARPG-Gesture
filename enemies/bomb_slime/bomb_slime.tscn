@@ -1,0 +1,15 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://enemies/slime/slime.tscn" id="1_slime"]
+[ext_resource type="Script" path="res://enemies/bomb_slime/bomb_slime.gd" id="2_bomb"]
+
+[node name="BombSlime" instance=ExtResource("1_slime")]
+script = ExtResource("2_bomb")
+hp = 2
+apple_drop_chance = 0.08
+
+[node name="Sprite2D" parent="." index="3"]
+self_modulate = Color(1.2, 0.15, 0.35, 1)
+
+[node name="Approach" parent="EnemyStateMachine" index="0"]
+speed = 38.0
