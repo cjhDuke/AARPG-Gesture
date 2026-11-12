@@ -1,8 +1,6 @@
 extends Node2D
 
 const START_LEVEL: String = "res://levels/survival/survival_arena.tscn"
-## 练习场 = 正式关卡 + 调试面板（命令行 `-- --practice` 时跳过标题直接进入，见 LevelManager.practice_mode）
-const PRACTICE_LEVEL: String = "res://levels/survival/survival_arena.tscn"
 ## 标题背景的镜头位置（主角被隐藏，只借用它身上的 Camera2D）。
 ## x 取房间中心，y 比中心靠上，让顶部露出一截墙，看得出是个房间
 const CAMERA_POS := Vector2(256, 112)
@@ -35,10 +33,6 @@ var _marker_placed: bool = false
 
 
 func _ready() -> void:
-	# 练习模式：不做任何标题的初始化（不暂停、不隐藏主角 / PlayerHud、不禁用 PauseMenu），直接换到练习场
-	if LevelManager.practice_mode:
-		get_tree().change_scene_to_file.call_deferred(PRACTICE_LEVEL)
-		return
 	get_tree().paused = true
 	# 从游戏里返回标题时，加载流程结束会取消暂停，这里重新暂停
 	LevelManager.level_loaded.connect( _pause_tree )
@@ -51,6 +45,20 @@ func _ready() -> void:
 	title_ui.visible = false
 	menu.visible = false
 	marker.visible = false
+
+	# 练习模式（`-- --practice`）只在角落加一行小字，流程与正式模式相同
+	if LevelManager.practice_mode:
+		var tag := Label.new()
+		tag.name = "PracticeTag"
+		tag.text = "PRACTICE MODE"
+		tag.add_theme_font_size_override( "font_size", 12 )
+		tag.add_theme_color_override( "font_color", Color( 1.0, 0.8, 0.3 ) )
+		tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		tag.set_anchors_preset( Control.PRESET_TOP_RIGHT )
+		tag.offset_left = -160.0
+		tag.offset_right = -6.0
+		tag.offset_top = 4.0
+		title_ui.add_child( tag )
 
 	LevelManager.level_load_started.connect(exit_title_screen)
 
