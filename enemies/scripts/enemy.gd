@@ -16,6 +16,8 @@ var cardinal_direction : Vector2 = Vector2.DOWN
 var direction : Vector2 = Vector2.ZERO
 var player : Player
 var invulnerable : bool = false
+## 正处于受击硬直（EnemyStateStun 置位）；用来区分硬直无敌和淡入 / 死亡无敌
+var stunned : bool = false
 var _is_defeated : bool = false
 ## 正在淡入生成中，状态脚本据此暂缓开启攻击判定
 var spawning : bool = false
@@ -81,7 +83,7 @@ func anim_direction() -> String:
 
 
 func _take_damage( hit_box : HitBox ) ->void:
-	if invulnerable == true:
+	if invulnerable == true and not ( stunned and hit_box.ignores_stun_invulnerability ):
 		return
 	hp -= hit_box.damage
 	if hp > 0:

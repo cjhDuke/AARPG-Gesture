@@ -69,6 +69,15 @@ var guided_hand_grace : float = 0.6
 ## 念力每秒消耗 / 回复（0-1 为满）
 var psi_drain : float = 1.0 / 3.0
 var psi_regen : float = 1.0 / 4.0
+## 念力爆破（受控飞行结束时在镖的位置炸一次；手丢失不炸）：范围半径（像素）、伤害、
+## 张开 / 松键触发时额外扣的念力（0-1，不够扣到 0 仍爆；念力耗尽触发的不额外扣）、
+## 本次受控飞行至少持续多久才爆（秒，防止点一下就炸）。放在控制器里是因为触发在这里判断，练习场也在这里调参
+var blast_radius : float = 36.0
+var blast_damage : int = 2
+var blast_psi_cost : float = 0.15
+var blast_min_guided_time : float = 0.3
+## 念力爆破是强化解锁的技能，默认关闭；每局开始由 reset() -> reset_upgrades() 复位
+var blast_enabled : bool = false
 
 ## ---------- 开关（默认是正常游戏的行为；测试场景会改） ----------
 ## false 时主角不走位，始终站定
@@ -110,6 +119,8 @@ var _need_open : bool = false
 var _launch_cursor : Vector2 = CENTER
 var _guided_by_hand : bool = false
 var _guided_time : float = 0.0
+## 本次受控飞行已持续的时间（regrab 也从 0 重新算），判断爆破用
+var _guided_age : float = 0.0
 ## 上一帧是否在手势模式且有手（用来判断光标是否要直接跳到目标点）
 var _had_hand : bool = false
 
@@ -127,12 +138,18 @@ func _ready() -> void:
 
 ## 每局开始：念力回满，结束操控
 func reset() -> void:
+	reset_upgrades()
 	_shutdown_control()
 	psi = 1.0
 	_attack_cd = 0.0
 	_prev_hold = false
 	_need_open = false
 	_update_hud()
+
+
+## 强化全部复位（后续新增的强化也加在这里）；reset() 会调用
+func reset_upgrades() -> void:
+	blast_enabled = false
 
 
 ## 回复念力（amount 为 0-1 的比例，结果夹在 0-1），宝石 / 药水用
@@ -327,6 +344,7 @@ func _begin_guided( b : Boomerang, by_hand : bool, regrab : bool ) -> void:
 	guided = true
 	_guided_by_hand = by_hand
 	_guided_time = LAUNCH_FIXED_TIME if regrab else 0.0
+	_guided_age = 0.0
 	_player.can_move = false
 	_player.move_override = Vector2.ZERO
 
@@ -336,15 +354,27 @@ func _end_guided( reason : String = "" ) -> void:
 	if not guided:
 		return
 	guided = false
+	# 先记下镖精灵的位置，再放开镖
+	var blast_pos := Vector2.ZERO
+	if is_instance_valid( _boomerang ):
+		blast_pos = _boomerang.global_position + Boomerang.SPRITE_OFFSET
+	var can_blast := is_instance_valid( _boomerang ) and _guided_age >= blast_min_guided_time
 	_boomerang = null
 	_abilities.release_guided()
 	_player.can_move = true
 	if reason != "":
 		control_event.emit( reason )
+	# 张开 / 松键 / 念力耗尽才爆，手丢失和静默收尾不爆
+	if blast_enabled and can_blast and reason in [ "RELEASE: OPEN", "RELEASE: KEY UP", "RELEASE: PSI EMPTY" ]:
+		if reason != "RELEASE: PSI EMPTY" and not psi_infinite:
+			psi = maxf( psi - blast_psi_cost, 0.0 )
+		PsiBlast.spawn( _player.get_parent(), blast_pos, blast_radius, blast_damage )
+		control_event.emit( "BLAST" )
 
 
 func _update_guided( delta : float, hand_mode : bool ) -> void:
 	_guided_time += delta
+	_guided_age += delta
 	if not is_instance_valid( _boomerang ):
 		return
 	var sprite_off := Boomerang.SPRITE_OFFSET

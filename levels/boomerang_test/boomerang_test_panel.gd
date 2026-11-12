@@ -69,6 +69,7 @@ func _build_params() -> void:
 		_param( "CURSOR SMOOTH", "ctrl", "guided_cursor_smooth_time", 0.01, 0.01, 0.3, 2 ),
 		_param( "CURSOR SPEED", "ctrl", "guided_cursor_max_speed", 20.0, 100.0, 1000.0, 0 ),
 		_param( "HAND GRACE", "ctrl", "guided_hand_grace", 0.1, 0.0, 2.0, 1 ),
+		_param( "BLAST RADIUS", "ctrl", "blast_radius", 4.0, 12.0, 80.0, 0 ),
 		# 面板上显示"连续操控多少秒耗尽"，控制器里存的是每秒消耗量
 		_param( "PSI DRAIN SEC", "psi_sec", "psi_drain", 0.5, 1.0, 20.0, 1 ),
 	]
@@ -100,15 +101,15 @@ func _set_param( p : Dictionary, v : float ) -> void:
 
 
 func _build_ui() -> void:
-	var left := _make_box( LEFT_POS, Vector2( LEFT_W, 17 * LINE_H + 4 ) )
+	var left := _make_box( LEFT_POS, Vector2( LEFT_W, 19 * LINE_H + 4 ) )
 	_status_label = _make_label( left )
-	_status_label.size = Vector2( LEFT_W - 4, 9 * LINE_H )
+	_status_label.size = Vector2( LEFT_W - 4, 10 * LINE_H )
 	_params_label = RichTextLabel.new()
 	_params_label.bbcode_enabled = true
 	_params_label.fit_content = false
 	_params_label.scroll_active = false
 	_params_label.autowrap_mode = TextServer.AUTOWRAP_OFF
-	_params_label.position = Vector2( 2, 9 * LINE_H + 4 )
+	_params_label.position = Vector2( 2, 10 * LINE_H + 4 )
 	_params_label.size = Vector2( LEFT_W - 4, 8 * LINE_H )
 	_style( _params_label )
 	_params_label.add_theme_color_override( "default_color", COL_TEXT )
@@ -119,9 +120,9 @@ func _build_ui() -> void:
 	_log_label.size = Vector2( RIGHT_W - 4, (LOG_LINES + 1) * LINE_H )
 	_help_label = _make_label( right )
 	_help_label.position.y = (LOG_LINES + 1) * LINE_H + 6
-	_help_label.size = Vector2( RIGHT_W - 4, 7 * LINE_H )
+	_help_label.size = Vector2( RIGHT_W - 4, 8 * LINE_H )
 	_help_label.add_theme_color_override( "font_color", COL_DIM )
-	_help_label.text = "[ ]  SELECT\n- =  ADJUST\n0  RESET ALL\nI  INFINITE PSI\nG  GHOST\nF1 PANEL  F3 RESCAN\nESC  MENU"
+	_help_label.text = "[ ]  SELECT\n- =  ADJUST\n0  RESET ALL\nI  INFINITE PSI\nB  BLAST ON/OFF\nG  GHOST\nF1 PANEL  F3 RESCAN\nESC  MENU"
 
 
 func _make_box( pos : Vector2, size : Vector2 ) -> ColorRect:
@@ -172,6 +173,8 @@ func _unhandled_input( event : InputEvent ) -> void:
 			_adjust( 1 )
 		KEY_0:
 			_reset_all()
+		KEY_B:
+			_controller.blast_enabled = not _controller.blast_enabled
 		KEY_I:
 			_controller.psi_infinite = not _controller.psi_infinite
 		_:
@@ -192,6 +195,7 @@ func _reset_all() -> void:
 	for i in _params.size():
 		_set_param( _params[i], _defaults[i] )
 	_controller.psi_infinite = false
+	_controller.blast_enabled = false
 
 
 # ---------- 回旋镖参数同步 ----------
@@ -243,6 +247,7 @@ func _refresh_status() -> void:
 		"PSI %d%%%s" % [ int( roundf( _controller.psi * 100.0 ) ), "  INF" if _controller.psi_infinite else "" ],
 		"DIST %s" % dist_text,
 		"GHOST %s" % _ghost_name(),
+		"BLAST %s" % ( "ON" if _controller.blast_enabled else "OFF" ),
 	] )
 
 

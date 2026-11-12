@@ -18,6 +18,7 @@ func init() ->void:
 ## What happens when the player enters this State
 func enter() -> void:
 	enemy.invulnerable = true
+	enemy.stunned = true
 	_animation_finished = false
 	_direction = enemy.global_position.direction_to( _damage_position )
 	
@@ -31,6 +32,7 @@ func enter() -> void:
 ## What happens when the player exits this State
 func exit() -> void:
 	enemy.invulnerable = false
+	enemy.stunned = false
 	enemy.animation_player.animation_finished.disconnect( _on_animation_finished )
 	pass
 	

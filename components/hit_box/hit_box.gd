@@ -1,6 +1,8 @@
 class_name HitBox extends Area2D
 
 @export var damage : int = 1
+## 为 true 时无视敌人的受击硬直无敌（淡入、死亡动画期间的无敌仍然有效），只给念力爆破用
+var ignores_stun_invulnerability : bool = false
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:

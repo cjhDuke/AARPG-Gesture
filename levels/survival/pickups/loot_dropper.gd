@@ -63,9 +63,9 @@ func store_apple() -> bool:
 	return true
 
 
-## 敌人被消灭：hit_box 是致命一击的判定框（属于 Boomerang 节点则是回旋镖击杀）
+## 敌人被消灭：hit_box 是致命一击的判定框（属于 Boomerang 或 PsiBlast 节点则算回旋镖击杀）
 func handle_enemy_destroyed( enemy : Enemy, hit_box : HitBox ) -> void:
-	var by_boomerang := is_instance_valid( hit_box ) and hit_box.get_parent() is Boomerang
+	var by_boomerang := is_instance_valid( hit_box ) and ( hit_box.get_parent() is Boomerang or hit_box.get_parent() is PsiBlast )
 	var gem := by_boomerang and randf() < GEM_CHANCE_BOOMERANG
 	var apple := false
 	if apples_enabled:
