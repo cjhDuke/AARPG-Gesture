@@ -96,8 +96,59 @@ class PipelineTest(unittest.TestCase):
 
     def test_between_thresholds(self):
         fc = self.cfg["features"]
-        mid = (fc["fist_max_ratio"] + fc["palm_min_ratio"]) / 2
-        self.assertEqual(features.classify(mid, fc), "between")
+        # 张开度在中间、实心度刚过下限但没到宽上限要求的 0.90：既不是拳也不是掌
+        self.assertEqual(features.classify(2.1, 0.89, False, fc), "between")
+        self.assertEqual(features.classify(1.8, 0.89, False, fc), "fist")
+        self.assertEqual(features.classify(2.35, 0.95, False, fc), "fist")      # 侧握：张开度偏高但很实心
+        self.assertEqual(features.classify(2.35, 0.95, True, fc), "palm")       # 贴边：只用严格上限
+        self.assertEqual(features.classify(1.7, 0.7, False, fc), "palm")        # 指缝多
+        self.assertEqual(features.classify(2.6, 0.99, False, fc), "palm")
+
+    @staticmethod
+    def side_fist(cx):
+        """斜放的紧凑实心团块（模拟侧握的拳）。"""
+        img = synth.canvas()
+        m = np.zeros((synth.H, synth.W), np.uint8)
+        cv2.fillConvexPoly(m, cv2.boxPoints(((cx, 200), (50, 80), -45)).astype(np.int32), 255)
+        m = cv2.dilate(m, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)))
+        img[m > 0] = synth.SKIN
+        return img
+
+    def test_solid_side_fist_is_fist_unless_clipped_by_edge(self):
+        """张开度落在 1.9-2.4 的实心团块：不贴边判拳，贴到左 / 右边界不判拳（只认严格上限）。"""
+        fc = self.cfg["features"]
+        # 贴左边界
+        left = self.side_fist(20)
+        f = features.extract(self.run_pipeline(left, synth.make_segmenter(self.cfg))[0].mask, self.cfg)
+        self.assertTrue(f.edge)
+        self.assertGreater(f.open_ratio, fc["fist_max_ratio"])
+        self.assertLess(f.open_ratio, fc["fist_max_ratio_wide"])
+        self.assertGreater(f.solidity, 0.95)
+        self.assertNotEqual(f.gesture, "fist")
+        # 贴右边界（镜像）
+        f = features.extract(self.run_pipeline(cv2.flip(left, 1), synth.make_segmenter(self.cfg))[0].mask, self.cfg)
+        self.assertTrue(f.edge)
+        self.assertNotEqual(f.gesture, "fist")
+        # 同一形状在框中间：不贴边，张开度仍在 1.9-2.4，判为拳
+        mid = self.side_fist(140)
+        f = features.extract(self.run_pipeline(mid, synth.make_segmenter(self.cfg))[0].mask, self.cfg)
+        self.assertFalse(f.edge)
+        self.assertGreater(f.open_ratio, fc["fist_max_ratio"])
+        self.assertLess(f.open_ratio, fc["fist_max_ratio_wide"])
+        self.assertEqual(f.gesture, "fist", (f.open_ratio, f.solidity))
+
+    def test_spread_fingers_low_solidity_not_fist(self):
+        """手指分开的手形：张开度低于 palm_min_ratio，也因实心度低不判拳。"""
+        img = synth.canvas()
+        cv2.circle(img, (140, 200), 45, synth.SKIN, -1)
+        for i in range(5):
+            a = np.deg2rad(-90 + (i - 2) * 30)
+            tip = (int(140 + np.cos(a) * 95), int(200 + np.sin(a) * 95))
+            cv2.line(img, (int(140 + np.cos(a) * 22), int(200 + np.sin(a) * 22)), tip, synth.SKIN, 6)
+        res, f = self.run_pipeline(img)
+        self.assertLess(f.open_ratio, self.cfg["features"]["palm_min_ratio"])
+        self.assertLess(f.solidity, 0.8)
+        self.assertEqual(f.gesture, "palm")
 
     def test_empty_is_none(self):
         res, f = self.run_pipeline(synth.canvas())

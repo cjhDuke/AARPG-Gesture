@@ -72,12 +72,11 @@ def _text_panel(info):
     lines = [
         "gesture : %s (raw %s)" % (info["gesture"], info["raw"]),
         "zone    : %s" % info["zone"],
-        "open ratio: %.2f" % info["open_ratio"],
+        "open ratio: %.2f  solid: %.2f" % (info["open_ratio"], info.get("solidity", 0.0)),
         "palm r  : %.0f px" % info["radius"],
         "fps     : %.1f" % info["fps"],
         "proc    : %.1f ms" % info["proc_ms"],
         "background: %s" % ("OK" if info["calibrated"] else
-                            ("HAND OUT  %d" % info["calib_countdown"]) if info.get("calib_countdown") else
                             "capturing - keep hand out" if info["calibrating"] else "NONE - press c"),
         "",
         "[c] capture background (hand OUT)",

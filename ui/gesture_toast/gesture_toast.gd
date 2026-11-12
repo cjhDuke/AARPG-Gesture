@@ -15,6 +15,9 @@ const COL_WARN := Color(1.0, 0.45, 0.4)
 const COL_SCAN := Color(1.0, 0.85, 0.4)
 const COL_FIST := Color(1.0, 0.65, 0.2)
 const COL_OPEN := Color(1, 1, 1)
+const COL_READY := Color(0.5, 1.0, 0.6)
+## 标定完成后 READY 提示停留多久（毫秒）
+const READY_HOLD_MSEC := 1500
 
 var _gi: Node
 var _root: Control
@@ -25,6 +28,9 @@ var _tween: Tween
 ## 临时消息（如 PSI LOW）：文字和到期时间（毫秒）
 var _flash_text := ""
 var _flash_until_msec := 0
+## 上一帧是否已标定；未连接时记为 true，避免连上一个早已标定好的识别端就弹 READY
+var _prev_calibrated := true
+var _ready_until_msec := 0
 
 
 func _ready() -> void:
@@ -48,7 +54,7 @@ func _ready() -> void:
 	_root.modulate.a = 0.0
 
 
-## 临时消息：盖过 OPEN / FIST 提示，但不盖过 CAMERA OFFLINE / 扫描 / 未采背景 / NO HAND
+## 临时消息：盖过 OPEN / FIST 提示，但不盖过 CAMERA OFFLINE / 采集 / 未采背景 / READY / NO HAND
 func flash_message(text: String, seconds: float) -> void:
 	_flash_text = text
 	_flash_until_msec = Time.get_ticks_msec() + int(seconds * 1000.0)
@@ -60,6 +66,12 @@ func _ignore(c: Control) -> void:
 
 
 func _process(_delta: float) -> void:
+	if not _gi.connected:
+		_prev_calibrated = true
+	elif _gi.calibrated and not _prev_calibrated:
+		_ready_until_msec = Time.get_ticks_msec() + READY_HOLD_MSEC
+	if _gi.connected:
+		_prev_calibrated = _gi.calibrated
 	var info := _current_info()
 	var text: String = info[0]
 	if text == _text:
@@ -76,11 +88,12 @@ func _current_info() -> Array:
 	if not _gi.connected:
 		return ["CAMERA OFFLINE", COL_WARN, true]
 	if _gi.calibrating:
-		if _gi.calib_countdown > 0:
-			return ["HAND OUT  %d" % _gi.calib_countdown, COL_SCAN, true]
-		return ["SCANNING - HAND OUT", COL_SCAN, true]
+		return ["KEEP HAND OUT", COL_SCAN, true]
 	if not _gi.calibrated:
 		return ["HAND OUT, PRESS F3", COL_WARN, true]
+	# 背景刚采完：提示可以把手放进来（和状态类提示同级，暂停时也显示）
+	if Time.get_ticks_msec() < _ready_until_msec:
+		return ["READY - HAND IN", COL_READY, true]
 	# 暂停（标题、暂停菜单、结算面板）时手势不控制菜单，只保留上面的状态类提示
 	if get_tree().paused:
 		return ["", COL_OPEN, false]
