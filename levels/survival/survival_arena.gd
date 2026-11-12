@@ -10,6 +10,9 @@ const CHEST_POS := HandController.CENTER + Vector2( 0, 36 )
 ## 切关后横幅显示的时间（秒），之后才开始第一波
 const STAGE_BANNER_TIME : float = 1.5
 
+## 每局开始（含重开）时发出，练习场面板用它把强化开关重新施加
+signal run_started
+
 @onready var spawner : WaveSpawner = $WaveSpawner
 @onready var controller : HandController = $HandController
 @onready var hud : SurvivalHud = $SurvivalHud
@@ -33,6 +36,8 @@ var _map : Node
 var _map_path : String = ""
 ## 每次重开 +1；关卡切换的协程醒来后用它判断这一局是否已被重开作废
 var _run_id : int = 0
+## _advance_stage 协程正在跑（淡出 / 换关 / 淡入）；期间练习场的跳关会被忽略，免得两条流程同时推进
+var _stage_changing : bool = false
 
 
 func _ready() -> void:
@@ -60,6 +65,12 @@ func _ready() -> void:
 	wave_timer.timeout.connect( _begin_wave )
 	hud.retry_pressed.connect( _on_retry_pressed )
 	hud.title_pressed.connect( _on_title_pressed )
+	if LevelManager.practice_mode:
+		# 练习场没有标题可回；调试面板在 _start_run 之前创建，才能接到第一局的 run_started
+		hud.title_button.visible = false
+		var panel := PracticePanel.new()
+		panel.name = "PracticePanel"
+		add_child( panel )
 	_start_run()
 
 
@@ -95,6 +106,7 @@ func _start_run() -> void:
 	controller.reset()
 	_update_status()
 	wave_timer.start( START_DELAY )
+	run_started.emit()
 
 
 func _begin_wave() -> void:
@@ -179,6 +191,12 @@ func _between_stages() -> void:
 ## 当前关清完且宝箱收走后：钩子 -> 淡出 -> 换关卡 -> 淡入 -> 横幅 -> 第一波。
 ## 主角血量、背包、掉落统计都留在原节点上，不重置。
 func _advance_stage() -> void:
+	_stage_changing = true
+	await _advance_stage_flow()
+	_stage_changing = false
+
+
+func _advance_stage_flow() -> void:
 	var id := _run_id
 	controller.enabled = false
 	await _between_stages()
@@ -203,6 +221,36 @@ func _advance_stage() -> void:
 	controller.enabled = true
 	hud.show_banner( "STAGE %d - %s" % [ stage + 1, _stage_data["name"] ] )
 	wave_timer.start( STAGE_BANNER_TIME )
+
+
+## 练习场调试：立刻切到第 n 关（清敌人、掉落物、宝箱，主角回中心，从第 1 波开始，不淡入淡出）。
+## 递增 _run_id 让还没醒来的旧协程作废；正在淡出 / 淡入换关，或这一局已结束时忽略
+func debug_goto_stage( n : int ) -> void:
+	if _ended or _stage_changing:
+		return
+	_run_id += 1
+	wave_timer.stop()
+	_clear_rewards()
+	spawner.clear()
+	for c in get_children():
+		if c is Boomerang:
+			c.queue_free()
+	_load_stage( n )
+	wave = 0
+	_wave_hurt = false
+	_player.velocity = Vector2.ZERO
+	_player.global_position = HandController.CENTER
+	controller.enabled = true
+	_update_status()
+	hud.show_banner( "STAGE %d - %s" % [ stage + 1, _stage_data["name"] ] )
+	wave_timer.start( STAGE_BANNER_TIME )
+
+
+## 练习场调试：立刻清掉这一波的所有敌人，走正常的清波流程（宝箱 / 切关 / 胜利）
+func debug_clear_wave() -> void:
+	if _ended:
+		return
+	spawner.debug_clear_wave()
 
 
 ## 暂停菜单背包面板的内容

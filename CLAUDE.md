@@ -14,3 +14,4 @@
 - 功能大改或重要 bug 修复完成后可直接本地 git commit 并写好说明，不必询问；push 和删除原 Demo 仍需用户确认。
 - 每当游戏处于可导出、可玩的状态，直接导出 Windows exe 到 `build/`，并删除旧版只留最新一份（`gesture/` 要复制到 exe 旁边）。
 - 具体编码任务可交给 Sonnet / Haiku 子代理执行，以节省额度。
+- 练习场应作为测试调参始终存在，可以commit，但是不push

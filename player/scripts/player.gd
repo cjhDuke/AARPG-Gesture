@@ -4,6 +4,8 @@ var cardinal_direction : Vector2 = Vector2.DOWN
 const DIR_4 = [ Vector2.RIGHT , Vector2.DOWN , Vector2.LEFT , Vector2.UP ]
 var direction : Vector2 = Vector2.ZERO
 var invulnerable : bool = false
+## 练习场调试用的无敌开关：为 true 时受击不掉血（正式游戏从不设置）
+var god_mode : bool = false
 var hp : int = 6
 var max_hp : int = 6
 var is_dead : bool = false
@@ -103,7 +105,7 @@ func anim_direction() -> String:
 		return "side"
 
 func _take_damage( hit_box : HitBox ) -> void:
-	if invulnerable == true or is_dead == true:
+	if invulnerable == true or is_dead == true or god_mode:
 		return
 	update_hp( -hit_box.damage )
 	if hp > 0:

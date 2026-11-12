@@ -24,6 +24,9 @@ var _interval : float = 1.0
 var _timer : float = 0.0
 var _alive : int = 0
 var _running : bool = false
+## 每次 start_wave +1；敌人生成时记下当时的值，只有属于当前波的敌人死亡才扣存活数
+## （练习场在两波之间手动生成的怪不会干扰下一波的清波判定）
+var _wave_id : int = 0
 
 
 func _process( delta : float ) -> void:
@@ -46,6 +49,7 @@ func start_wave( wave : Dictionary ) -> void:
 	_interval = float( wave["interval"] )
 	_timer = 0.0
 	_alive = 0
+	_wave_id += 1
 	_running = true
 
 
@@ -78,15 +82,30 @@ func clear() -> void:
 ## 生成一只怪并计入存活数；默认放在边缘随机位置
 func _spawn( scene : PackedScene ) -> Enemy:
 	var enemy : Enemy = scene.instantiate()
+	enemy.set_meta( "wave_id", _wave_id )
 	enemy.enemy_destroyed.connect( _on_enemy_destroyed.bind( enemy ) )
 	enemy_parent.add_child( enemy )
-	enemy.global_position = _pick_spawn_position()
+	enemy.global_position = pick_spawn_position()
 	_alive += 1
 	return enemy
 
 
+## 练习场调试：这一波正在进行时，立刻清掉场上所有敌人和待生成队列，并按正常路径发 wave_cleared
+func debug_clear_wave() -> void:
+	if not _running:
+		return
+	clear()
+	_running = false
+	wave_cleared.emit()
+
+
+## 一波是否正在进行（已开始且还没清完）
+func is_running() -> bool:
+	return _running
+
+
 ## ARENA_RECT 四条边内侧的随机位置，且离主角不少于 MIN_SPAWN_DIST
-func _pick_spawn_position() -> Vector2:
+func pick_spawn_position() -> Vector2:
 	var rect : Rect2 = HandController.ARENA_RECT
 	var player_pos : Vector2 = PlayerManager.player.global_position
 	var pos := rect.position
@@ -102,7 +121,8 @@ func _pick_spawn_position() -> Vector2:
 
 
 func _on_enemy_destroyed( hit_box : HitBox, enemy : Enemy ) -> void:
-	_alive -= 1
+	if enemy.get_meta( "wave_id", -1 ) == _wave_id:
+		_alive -= 1
 	enemy_destroyed_at.emit( enemy, hit_box )
 	enemy_killed.emit()
 	if _running and _queue.is_empty() and _alive <= 0:

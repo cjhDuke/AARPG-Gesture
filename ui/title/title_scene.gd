@@ -1,8 +1,8 @@
 extends Node2D
 
 const START_LEVEL: String = "res://levels/survival/survival_arena.tscn"
-## 回旋镖练习场（命令行 `-- --practice` 时跳过标题直接进入，见 LevelManager.practice_mode）
-const PRACTICE_LEVEL: String = "res://levels/boomerang_test/boomerang_test.tscn"
+## 练习场 = 正式关卡 + 调试面板（命令行 `-- --practice` 时跳过标题直接进入，见 LevelManager.practice_mode）
+const PRACTICE_LEVEL: String = "res://levels/survival/survival_arena.tscn"
 ## 标题背景的镜头位置（主角被隐藏，只借用它身上的 Camera2D）。
 ## x 取房间中心，y 比中心靠上，让顶部露出一截墙，看得出是个房间
 const CAMERA_POS := Vector2(256, 112)

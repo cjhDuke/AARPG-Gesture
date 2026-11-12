@@ -48,10 +48,10 @@ const LAUNCH_AIM_MIN_DIST : float = 8.0
 const KEY_STEP : float = 80.0
 
 ## 操控状态变化时发出的简短英文事件（LAUNCH / REGRAB / RELEASE: ... / BLOCKED: ...），
-## 给测试场景的事件日志用
+## 给练习场面板的事件日志用
 signal control_event( text : String )
 
-## ---------- 调参（普通变量，测试场景运行时会改它们） ----------
+## ---------- 调参（普通变量，练习场面板运行时会改它们） ----------
 ## 走位时光标每秒最多移动的像素数
 var cursor_max_speed : float = 300.0
 ## 走位时光标朝手的位置做指数平滑的时间常数（秒），越大越"肉"
@@ -71,7 +71,7 @@ var psi_drain : float = 1.0 / 3.0
 var psi_regen : float = 1.0 / 4.0
 ## 念力爆破（受控飞行结束时在镖的位置炸一次；手丢失不炸）：范围半径（像素）、伤害、
 ## 张开 / 松键触发时额外扣的念力（0-1，不够扣到 0 仍爆；念力耗尽触发的不额外扣）、
-## 本次受控飞行至少持续多久才爆（秒，防止点一下就炸）。放在控制器里是因为触发在这里判断，练习场也在这里调参
+## 本次受控飞行至少持续多久才爆（秒，防止点一下就炸）。放在控制器里是因为触发在这里判断，练习场面板也在这里调参
 var blast_radius : float = 36.0
 var blast_damage : int = 2
 var blast_psi_cost : float = 0.15
@@ -79,7 +79,7 @@ var blast_min_guided_time : float = 0.3
 ## 念力爆破是强化解锁的技能，默认关闭；每局开始由 reset() -> reset_upgrades() 复位
 var blast_enabled : bool = false
 
-## ---------- 开关（默认是正常游戏的行为；测试场景会改） ----------
+## ---------- 开关（默认是正常游戏的行为；练习场面板会改） ----------
 ## false 时主角不走位，始终站定
 var walk_enabled : bool = true
 var auto_attack_enabled : bool = true
@@ -97,7 +97,7 @@ var enabled : bool = true :
 var psi : float = 1.0
 ## 正在操控回旋镖
 var guided : bool = false
-## 光标在世界坐标里的位置（只读，给测试场景的调试面板用）
+## 光标在世界坐标里的位置（只读，给练习场面板用）
 var cursor_pos : Vector2 :
 	get:
 		return _cursor_pos
@@ -325,14 +325,6 @@ func _update_walk( hand_mode : bool ) -> void:
 func _hand_to_arena( p : Vector2 ) -> Vector2:
 	var u := clampf( (p.x - HAND_X_MIN) / (HAND_X_MAX - HAND_X_MIN), 0.0, 1.0 )
 	var v := clampf( (p.y - HAND_Y_MIN) / (HAND_Y_MAX - HAND_Y_MIN), 0.0, 1.0 )
-	return CURSOR_RECT.position + Vector2( u, v ) * CURSOR_RECT.size
-
-
-## 同一个映射但不钳制：操作框边缘（归一化 0 / 1）会落在 CURSOR_RECT 之外。
-## 公开给练习场的 CAMERA 手影用，把整幅操作框画面严格对齐到手→光标的映射上
-func hand_to_arena_unclamped( p : Vector2 ) -> Vector2:
-	var u := (p.x - HAND_X_MIN) / (HAND_X_MAX - HAND_X_MIN)
-	var v := (p.y - HAND_Y_MIN) / (HAND_Y_MAX - HAND_Y_MIN)
 	return CURSOR_RECT.position + Vector2( u, v ) * CURSOR_RECT.size
 
 
