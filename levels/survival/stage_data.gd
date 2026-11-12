@@ -3,7 +3,7 @@ class_name StageData extends RefCounted
 ##
 ## 字段：
 ##   name     显示名（英文，字体没有中文字形）
-##   type     "waves" 按波次打；"boss" Boss 关（阶段 E 实现，目前未启用）
+##   type     "waves" 按波次打；"boss" Boss 关（没有波次，SurvivalArena 切到该关后放巫师，见 WizardBoss）
 ##   enabled  false 的关卡会被跳过
 ##   tilemap  图块地图场景路径（切关时实例化，替换旧地图节点）
 ##   music    背景音乐路径
@@ -43,10 +43,9 @@ const STAGES : Array[Dictionary] = [
 	{
 		"name": "WIZARD HALL",
 		"type": "boss",
-		# 阶段 E 做完 Boss 后改为 true
-		"enabled": false,
+		"enabled": true,
 		"tilemap": "res://tile_maps/survival_dungeon.tscn",
-		"music": "res://levels/survival/dungeon.mp3",
+		"music": "res://levels/survival/boss.ogg",
 		"waves": [],
 	},
 ]

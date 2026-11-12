@@ -32,6 +32,8 @@ var _player : Player
 var _death_fx : DeathFx
 var loot : LootDropper
 var _chest : RewardChest
+## Boss 关的巫师（只在 Boss 关存在）
+var _boss : WizardBoss
 ## 强化三选一的台座（选择期间存在）
 var _altar : UpgradeAltar
 ## 这一波主角是否受过伤（决定宝箱里有没有药水）
@@ -85,6 +87,7 @@ func _free_level() -> void:
 	PauseMenu.clear_level_hooks()
 	_clear_death_fx()
 	_clear_rewards()
+	_clear_boss()
 	controller.release_player()
 	var camera : Camera2D = _player.get_node( "Camera2D" )
 	camera.top_level = false
@@ -96,6 +99,7 @@ func _free_level() -> void:
 func _start_run() -> void:
 	_clear_death_fx()
 	_clear_rewards()
+	_clear_boss()
 	spawner.set_process( true )
 	wave_timer.stop()
 	spawner.clear()
@@ -120,6 +124,9 @@ func _start_run() -> void:
 
 
 func _begin_wave() -> void:
+	if _is_boss_stage():
+		_begin_boss()
+		return
 	wave += 1
 	_wave_hurt = false
 	hud.show_banner( "WAVE %d" % wave )
@@ -144,6 +151,42 @@ func _load_stage( n : int ) -> void:
 	spawner.blocked_rects = _map.get_ledge_rects() if _map.has_method( "get_ledge_rects" ) else ( [] as Array[Rect2] )
 	spawner.archer_spots.assign( _stage_data.get( "archer_spots", [] ) )
 	AudioManager.play_music( load( _stage_data["music"] ) )
+
+
+## 当前关是 Boss 关（没有波次）
+func _is_boss_stage() -> bool:
+	return _stage_data.get( "type", "waves" ) == "boss"
+
+
+## Boss 关开场：巫师淡入登场（登场期间不攻击），血条显示
+func _begin_boss() -> void:
+	_clear_boss()
+	_boss = WizardBoss.spawn( self, spawner, controller )
+	_boss.hp_changed.connect( hud.set_boss_hp )
+	_boss.defeated.connect( _on_boss_defeated )
+	hud.show_boss_bar()
+	hud.set_boss_hp( 1, _boss.seg_hp, _boss.segment_hp )
+	_update_status()
+
+
+func _on_boss_defeated() -> void:
+	if _ended:
+		return
+	_clear_boss()
+	_end_run( true )
+
+
+## 清掉 Boss 和它创建的一切（巫师、火把、光束、特效、血条；小怪和投射物由 spawner.clear() 清）。可重复调用
+func _clear_boss() -> void:
+	if is_instance_valid( _boss ):
+		_boss.cleanup()
+	_boss = null
+	# 兜底：不管引用在不在，节点组里的 Boss 相关节点都清掉
+	for n in get_tree().get_nodes_in_group( "wizard_boss" ):
+		n.queue_free()
+	for n in get_tree().get_nodes_in_group( "boss_fx" ):
+		n.queue_free()
+	hud.hide_boss_bar()
 
 
 ## 当前关的波数
@@ -277,6 +320,7 @@ func _advance_stage_flow() -> void:
 	for c in get_children():
 		if c is Boomerang:
 			c.queue_free()
+	_clear_boss()
 	_load_stage( stage + 1 )
 	wave = 0
 	_player.velocity = Vector2.ZERO
@@ -301,6 +345,7 @@ func debug_goto_stage( n : int ) -> void:
 	controller.enabled = true
 	wave_timer.stop()
 	_clear_rewards()
+	_clear_boss()
 	spawner.clear()
 	for c in get_children():
 		if c is Boomerang:
@@ -320,6 +365,10 @@ func debug_goto_stage( n : int ) -> void:
 func debug_clear_wave() -> void:
 	if _ended:
 		return
+	if is_instance_valid( _boss ):
+		# Boss 关：K = 立即碎盾进入破绽阶段
+		_boss.debug_break_shield()
+		return
 	spawner.debug_clear_wave()
 
 
@@ -330,7 +379,7 @@ func _bag_info() -> Dictionary:
 		owned.append( Upgrades.display_name( u ) )
 	return {
 		"upgrades": owned,
-		"status": "STAGE %d  WAVE %d/%d   KILLS %d" % [ stage + 1, maxi( wave, 1 ), _wave_total(), kills ],
+		"status": ( "STAGE %d  BOSS   KILLS %d" % [ stage + 1, kills ] ) if _is_boss_stage() else ( "STAGE %d  WAVE %d/%d   KILLS %d" % [ stage + 1, maxi( wave, 1 ), _wave_total(), kills ] ),
 		"rows": [
 			{ "region": Pickup.REGIONS[Pickup.Kind.APPLE], "name": "APPLE",
 				"value": "%d/%d" % [ loot.bag_apples, LootDropper.BAG_CAPACITY ], "note": "IN BAG - AUTO EAT" },
@@ -363,6 +412,8 @@ func _on_player_died() -> void:
 	_ended = true
 	wave_timer.stop()
 	_clear_rewards()
+	if is_instance_valid( _boss ):
+		_boss.freeze()
 	spawner.set_process( false )
 	controller.enabled = false
 	PauseMenu.process_mode = Node.PROCESS_MODE_DISABLED

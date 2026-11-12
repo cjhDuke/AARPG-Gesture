@@ -514,11 +514,17 @@ func _update_auto_attack() -> void:
 	var state := _player.state_machine.current_state
 	if not (state is State_Idle or state is State_Walk):
 		return
+	var in_range := false
 	var target := _nearest_enemy()
-	if target == null:
-		return
-	var to_enemy := target.global_position - _player.global_position
-	if to_enemy.length() >= attack_range:
+	if target != null and ( target.global_position - _player.global_position ).length() < attack_range:
+		in_range = true
+	# Boss 只在破绽阶段（护盾碎了）才当目标；按离身体边缘的距离算，和普通敌人同一量纲
+	if not in_range:
+		for b in get_tree().get_nodes_in_group( "wizard_boss" ):
+			if b is WizardBoss and b.vulnerable and b.melee_distance( _player.global_position ) < attack_range:
+				in_range = true
+				break
+	if not in_range:
 		return
 	_attack_cd = ATTACK_COOLDOWN
 	_swing()

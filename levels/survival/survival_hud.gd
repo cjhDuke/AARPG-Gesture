@@ -27,6 +27,9 @@ const UPGRADE_STEP : float = 14.0
 var _banner_tween : Tween
 var _upgrade_icons : Array[Control] = []
 var _bag_icons : Array[TextureRect] = []
+## Boss 血条（只在 Boss 关存在）：左上角位置在手势提示框正下方，居中偏右给左边的名字留位置
+var _boss_bar : BossBar
+const BOSS_BAR_POS := Vector2( 168, 27 )
 
 
 func _ready() -> void:
@@ -41,8 +44,36 @@ func _process( _delta : float ) -> void:
 		trophy.frame = int( Time.get_ticks_msec() / 150 ) % 8
 
 
+## total_waves 为 0 表示 Boss 关（没有波次），显示 BOSS
 func set_status( stage : int, wave : int, total_waves : int, kills : int, best : int ) -> void:
-	status_label.text = "STAGE %d  WAVE %d/%d  KILLS %d  BEST %d" % [ stage, wave, total_waves, kills, best ]
+	if total_waves <= 0:
+		status_label.text = "STAGE %d  BOSS  KILLS %d  BEST %d" % [ stage, kills, best ]
+	else:
+		status_label.text = "STAGE %d  WAVE %d/%d  KILLS %d  BEST %d" % [ stage, wave, total_waves, kills, best ]
+
+
+## 显示 Boss 血条（名字固定 WIZARD）
+func show_boss_bar() -> void:
+	if _boss_bar == null:
+		_boss_bar = BossBar.new()
+		_boss_bar.position = BOSS_BAR_POS
+		$Root.add_child( _boss_bar )
+	_boss_bar.visible = true
+
+
+func set_boss_hp( round_no : int, hp : int, hp_max : int ) -> void:
+	if _boss_bar != null:
+		_boss_bar.set_hp( round_no, hp, hp_max )
+
+
+func hide_boss_bar() -> void:
+	if _boss_bar != null:
+		_boss_bar.queue_free()
+		_boss_bar = null
+
+
+func is_boss_bar_visible() -> bool:
+	return _boss_bar != null and _boss_bar.visible
 
 
 ## 背包显示：capacity 个苹果格子，前 count 个点亮，其余是暗色剪影
