@@ -4,6 +4,10 @@
 - 只用肤色：米色墙面、木纹这类静止的近肤色背景会混进来，手上的高光和阴影又会漏掉。
 - 只用背景差分：袖子、身体的晃动都会算作前景。
 两者取交集后，静止的近肤色背景被差分去掉，会动的非肤色物体被肤色范围去掉。
+
+背景鬼影自愈：背景采集时手若还在框里，背景模型里会留下"鬼影手"，手回到那里就差分不出来，
+而慢速更新只作用于非前景像素，鬼影永远不消失。所以对"是前景、但当前不是肤色、
+且离所有肤色前景都很远"的像素用较快速度更新背景（它们不会进入手掩膜，更新是安全的）。
 """
 from dataclasses import dataclass
 
@@ -38,6 +42,8 @@ class Segmenter:
         self.k_open = _ellipse(self.seg["open_kernel"])
         self.k_close = _ellipse(self.seg["close_kernel"])
         self.k_guard = _ellipse(self.bgc["update_guard_kernel"])
+        self.ghost_alpha = float(self.bgc.get("ghost_alpha", 0.1))   # 0 = 关闭鬼影自愈
+        self.k_ghost = _ellipse(self.bgc.get("ghost_guard_kernel", 51))
         self.selector = HandSelector(cfg)
 
     @property
@@ -93,6 +99,16 @@ class Segmenter:
         out = cv2.morphologyEx(binary, cv2.MORPH_OPEN, self.k_open)
         return cv2.morphologyEx(out, cv2.MORPH_CLOSE, self.k_close)
 
+    def _heal_ghost(self, ycc, fg, skin, near_src):
+        """鬼影自愈：前景 且 非肤色 且 远离肤色前景的像素，用较快速度更新背景。"""
+        if self.ghost_alpha <= 0:
+            return
+        near = cv2.dilate(near_src, self.k_ghost) > 0
+        ghost = fg & ~skin & ~near
+        if ghost.any():
+            a = self.ghost_alpha
+            self.bg[ghost] = self.bg[ghost] * (1.0 - a) + ycc[ghost].astype(np.float32) * a
+
     def _update_background(self, ycc, fg):
         """只在判为背景的像素上缓慢更新，跟上光照和曝光的漂移，又不会把停住的手或袖子吸收进背景。"""
         keep = cv2.dilate(fg.astype(np.uint8), self.k_guard) > 0
@@ -114,9 +130,11 @@ class Segmenter:
             return SegResult(ycc[:, :, 1], empty, empty, empty, False, 0)
 
         fg, vis = self._foreground(ycc)
-        th = (fg & self._skin(ycc)).astype(np.uint8) * 255
+        skin = self._skin(ycc)
+        th = (fg & skin).astype(np.uint8) * 255
         morph = self._morphology(th)
         # 步骤 6：连通域分析 + 有状态选手（跟踪上一帧的手，排除晃动的脸）
         mask, area = self.selector.select(morph, self.seg["min_area_ratio"] * morph.size)
         self._update_background(ycc, fg)
+        self._heal_ghost(ycc, fg, skin, cv2.bitwise_or(morph, mask))
         return SegResult(vis, th, morph, mask, bool(mask.any()), area)

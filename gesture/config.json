@@ -31,7 +31,9 @@
     "chroma_threshold": 7.0,
     "luma_threshold": 40.0,
     "update_alpha": 0.03,
-    "update_guard_kernel": 25
+    "update_guard_kernel": 25,
+    "ghost_alpha": 0.1,
+    "ghost_guard_kernel": 51
   },
   "skin_range": {"cr": [133, 185], "cb": [75, 135]},
   "segment": {
