@@ -7,11 +7,11 @@ const TITLE_SCENE : String = "res://ui/title/title_scene.tscn"
 const ITEMS_TEXTURE : Texture2D = preload( "res://levels/survival/pickups/items.png" )
 ## 有背包面板时，面板和按钮列各自的左边缘（相对屏幕中心的 x 偏移）及面板尺寸
 const BAG_PANEL_X : float = -150.0
-const BAG_PANEL_SIZE := Vector2( 156, 172 )
+const BAG_PANEL_SIZE := Vector2( 156, 178 )
 const BUTTONS_X_WITH_BAG : float = 30.0
 const BUTTONS_X_CENTERED : float = -60.0
 const BUTTONS_WIDTH : float = 120.0
-const PANEL_TOP : float = 78.0
+const PANEL_TOP : float = 72.0
 
 signal shown
 signal hidden
@@ -136,6 +136,8 @@ func _build_bag_panel() -> void:
 	# 已拥有的强化：一段自动换行的小字，没有强化时隐藏
 	_bag_upgrades = _make_label( "", 8, Color( 0.6, 1.0, 0.7 ) )
 	_bag_upgrades.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# 8 项强化满级时有 4 行，行距收紧才放得下状态行
+	_bag_upgrades.add_theme_constant_override( "line_spacing", -3 )
 	_bag_upgrades.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child( _bag_upgrades )
 	_bag_status = _make_label( "", 8, Color( 0.75, 0.8, 0.85 ) )

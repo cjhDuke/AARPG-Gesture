@@ -8,8 +8,6 @@ signal TileMapBoundsChanged(bounds: Array[Vector2])
 var current_tilemap_bounds: Array[Vector2]
 var is_loading_level: bool = false
 var practice_mode: bool = false
-## 本次运行已经看过开场 splash：从游戏里回标题时跳过它，直接显示标题菜单
-var title_seen: bool = false
 
 
 func _ready() -> void:

@@ -9,10 +9,6 @@ const WAVE_DELAY : float = 2.0
 const CHEST_POS := HandController.CENTER + Vector2( 0, 36 )
 ## 切关后横幅显示的时间（秒），之后才开始第一波
 const STAGE_BANNER_TIME : float = 1.5
-## 选中强化后到流程继续的停顿（秒）
-const UPGRADE_DONE_DELAY : float = 0.8
-const APPEAR_SOUND : AudioStream = preload( "res://levels/survival/upgrade_appear.wav" )
-const CHOOSE_SOUND : AudioStream = preload( "res://levels/survival/upgrade_choose.wav" )
 
 ## 每局开始（含重开）时发出，练习场面板用它把强化开关重新施加
 signal run_started
@@ -34,8 +30,8 @@ var loot : LootDropper
 var _chest : RewardChest
 ## Boss 关的巫师（只在 Boss 关存在）
 var _boss : WizardBoss
-## 强化三选一的台座（选择期间存在）
-var _altar : UpgradeAltar
+## 强化三选一弹窗（选择期间存在，游戏处于暂停）
+var _upgrade_menu : UpgradeMenu
 ## 这一波主角是否受过伤（决定宝箱里有没有药水）
 var _wave_hurt : bool = false
 ## 当前关的数据（StageData.get_stage）和图块地图节点
@@ -236,7 +232,7 @@ func _on_chest_finished() -> void:
 		wave_timer.start( WAVE_DELAY )
 
 
-## 关卡之间的钩子：在淡出之前调用。这一波标了 "upgrade" 就先做强化三选一（主角在场地上自由走动）。
+## 关卡之间的钩子：在淡出之前调用。这一波标了 "upgrade" 就先弹出强化三选一（游戏暂停，选完才继续）。
 func _between_stages() -> void:
 	if _wave_wants_upgrade():
 		await _choose_upgrade()
@@ -258,14 +254,16 @@ func _upgrade_then_next_wave() -> void:
 	wave_timer.start( WAVE_DELAY )
 
 
-## 强化三选一：从没拥有的强化池里随机抽最多 3 个放台座，主角走上去停留选中。
-## 没有可选的就直接返回。重开 / 死亡 / 跳关时台座被清掉，这个协程不会再醒来（用 _run_id 判断）。
-## 选择期间场上没有敌人，主角照常能走动和放镖，不做限制（放镖无害）
+## 强化三选一：从没满级的强化池里随机抽最多 3 个不同的，弹出暂停弹窗（UpgradeMenu），选中的那项 +1 级。
+## 没有可选的（全部满级）就直接返回，不弹窗。重开 / 死亡 / 跳关时弹窗被 abort 掉并取消暂停，
+## 这个协程不会再醒来（弹窗释放后 chosen 不再发出；醒来的情况用 _run_id 判断）
 func _choose_upgrade() -> void:
+	if _ended:
+		return
 	var id := _run_id
 	var candidates : Array[String] = []
 	for u in Upgrades.pool_ids():
-		if not controller.has_upgrade( u ):
+		if controller.upgrade_level( u ) < Upgrades.max_level( u ):
 			candidates.append( u )
 	if candidates.is_empty():
 		return
@@ -273,22 +271,24 @@ func _choose_upgrade() -> void:
 	var picks : Array[String] = []
 	for i in mini( 3, candidates.size() ):
 		picks.append( candidates[i] )
-	hud.show_banner( "CHOOSE UPGRADE" )
-	_altar = UpgradeAltar.new()
-	_altar.player = _player
-	_altar.ids = picks
-	add_child( _altar )
-	PlayerManager.play_audio( APPEAR_SOUND )
-	var altar := _altar
-	var picked : String = await altar.chosen
+	_clear_upgrade_menu()
+	_upgrade_menu = UpgradeMenu.new()
+	_upgrade_menu.setup( picks, controller.owned_levels() )
+	add_child( _upgrade_menu )
+	var menu := _upgrade_menu
+	var picked : String = await menu.chosen
 	if id != _run_id or _ended or not is_inside_tree():
 		return
-	controller.set_upgrade( picked, true )
-	altar.dismiss()
-	_altar = null
-	PlayerManager.play_audio( CHOOSE_SOUND )
-	Pickup.show_float_text( self, _player.global_position + Vector2( 0, -48 ), Upgrades.display_name( picked ) )
-	await get_tree().create_timer( UPGRADE_DONE_DELAY ).timeout
+	_upgrade_menu = null
+	var lv := controller.add_upgrade( picked )
+	Pickup.show_float_text( self, _player.global_position + Vector2( 0, -48 ), "%s LV %d" % [ Upgrades.display_name( picked ), lv ] )
+
+
+## 关掉还开着的强化弹窗并取消它造成的暂停（可重复调用）
+func _clear_upgrade_menu() -> void:
+	if is_instance_valid( _upgrade_menu ):
+		_upgrade_menu.abort()
+	_upgrade_menu = null
 
 
 ## 当前关清完且宝箱收走后：钩子 -> 淡出 -> 换关卡 -> 淡入 -> 横幅 -> 第一波。
@@ -372,8 +372,9 @@ func debug_clear_wave() -> void:
 ## 暂停菜单背包面板的内容
 func _bag_info() -> Dictionary:
 	var owned : Array[String] = []
-	for u in controller.owned_ids():
-		owned.append( Upgrades.display_name( u ) )
+	var levels := controller.owned_levels()
+	for u in levels:
+		owned.append( "%s LV %d" % [ Upgrades.display_name( u ), levels[u] ] )
 	return {
 		"upgrades": owned,
 		"status": ( "STAGE %d  BOSS   KILLS %d" % [ stage + 1, kills ] ) if _is_boss_stage() else ( "STAGE %d  WAVE %d/%d   KILLS %d" % [ stage + 1, maxi( wave, 1 ), _wave_total(), kills ] ),
@@ -393,9 +394,7 @@ func _clear_rewards() -> void:
 	if is_instance_valid( _chest ):
 		_chest.queue_free()
 	_chest = null
-	if is_instance_valid( _altar ):
-		_altar.queue_free()
-	_altar = null
+	_clear_upgrade_menu()
 	if loot != null:
 		loot.clear()
 
