@@ -131,8 +131,6 @@ def run():
     recorder = Recorder(os.path.join(HERE, "recordings"), cfg.get("record_max_seconds", 30.0))
     toggle_rec = False
     auto_cal_at = int(cfg["calibration"].get("auto_start_frame", 0))
-    cal_auto_s = float(cfg["calibration"].get("countdown_s", 3.0))           # 开机自动标定的倒计时
-    cal_manual_s = float(cfg["calibration"].get("manual_countdown_s", 1.0))  # F3 / 换操作框触发的倒计时
     was_calibrated = segmenter.calibrated
     cycle_roi = False
     last_ping = time.monotonic()
@@ -166,11 +164,11 @@ def run():
                 save_roi_index(roi_idx)
                 debouncer, zones = GestureDebouncer(cfg), ZoneTracker(cfg)
                 smoother.reset()
-                segmenter.calibrate(cal_manual_s)  # 换了位置，背景要重新采集
+                segmenter.calibrate()  # 换了位置，背景要重新采集
             roi, rect = crop_roi(frame, cfg["roi_presets"][roi_idx])
             # 开机后自动采一次背景（此时手通常不在框里）；不对就按 F3 / c 重采
             if auto_cal_at and n_done == auto_cal_at and not segmenter.calibrated and not segmenter.calibrating:
-                segmenter.calibrate(cal_auto_s)
+                segmenter.calibrate()
             seg = segmenter.process(roi)
             if segmenter.calibrated and not was_calibrated:
                 recorder.update_meta(roi_idx, segmenter.bg)
@@ -204,7 +202,6 @@ def run():
                      "open_ratio": round(feats.open_ratio, 2), "edge": bool(feats.edge), "radius": round(feats.radius / w, 3),
                      "fps": round(fps, 1), "proc_ms": round(proc_ms, 2),
                      "calibrated": segmenter.calibrated, "calibrating": segmenter.calibrating,
-                     "calib_countdown": segmenter.calib_countdown,
                      # 手影用：操作框在整幅画面里的像素矩形、画面尺寸、手轮廓多边形（操作框内归一化）
                      "roi": [int(v) for v in rect], "frame": [int(frame.shape[1]), int(frame.shape[0])],
                      "contour": features.simplify_contour(feats.contour, w, h) if feats.palm else []}
@@ -218,7 +215,7 @@ def run():
                 if name == "ping":
                     last_ping = now
                 elif name == "calibrate":
-                    segmenter.calibrate(cal_manual_s)
+                    segmenter.calibrate()
                 elif name == "record":
                     toggle_rec = True
                 elif name == "stage" and cmd.get("value") in (0, 1, 2, 3):
@@ -230,17 +227,16 @@ def run():
 
             if view:
                 info = {"gesture": gesture, "raw": feats.gesture, "zone": zone,
-                        "open_ratio": feats.open_ratio, "radius": feats.radius,
+                        "open_ratio": feats.open_ratio, "solidity": feats.solidity, "radius": feats.radius,
                         "fps": fps, "proc_ms": proc_ms, "calibrated": segmenter.calibrated,
                         "calibrating": segmenter.calibrating,
-                        "calib_countdown": segmenter.calib_countdown,
                         "rec_s": recorder.elapsed if recorder.active else None}
                 board = debug_view.compose(frame, rect, roi, seg, feats, info, cfg)
                 key = view.show(board)
                 if key == "q":
                     break
                 if key == "c":
-                    segmenter.calibrate(cal_manual_s)
+                    segmenter.calibrate()
                 elif key == "v":
                     toggle_rec = True
                 elif key == "r":

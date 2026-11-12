@@ -24,17 +24,12 @@
   ],
   "record_max_seconds": 30.0,
   "calibration": {
-    "auto_start_frame": 20,
-    "countdown_s": 3.0,
-    "manual_countdown_s": 1.0
+    "auto_start_frame": 20
   },
   "background": {
-    "frames": 30,
+    "frames": 15,
     "calib_skin_dilate": 15,
     "calib_min_samples": 3,
-    "calib_motion_luma": 15,
-    "calib_motion_max": 0.05,
-    "calib_max_retries": 3,
     "chroma_threshold": 7.0,
     "luma_threshold": 40.0,
     "update_alpha": 0.03,
@@ -63,6 +58,11 @@
     "hand_min_shrink": 0.5,
     "clip_margin": 3,
     "fist_max_ratio": 1.9,
+    "fist_max_ratio_wide": 2.4,
+    "fist_min_solidity": 0.88,
+    "fist_min_solidity_wide": 0.90,
+    "palm_max_solidity": 0.88,
+    "hand_cut": 1.0,
     "palm_min_ratio": 2.3,
     "arm_thick_ratio": 0.3,
     "arm_palm_disc": 1.25,

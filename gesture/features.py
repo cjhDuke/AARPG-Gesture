@@ -1,6 +1,8 @@
 """步骤 7-8：轮廓、掌心（距离变换）、小臂方向、张开度，以及张开 / 握拳的原始判定。
 
 张开度 = 掌心到最远轮廓点的距离 ÷ 掌心内切圆半径。
+实心度 = 沿小臂方向投影不超过 hand_cut 倍半径的那部分填充区域，面积 ÷ 凸包面积：
+拳头是实心团块（接近 1），张开的手有指缝（明显更低）；侧握的拳张开度会偏高，靠实心度补充判断。
 - 掌心和半径来自距离变换：手掩膜内离边界最远的点及其距离。
 - 找最远点时要排除小臂：小臂是"粗"的（距离变换值大），手指是"细"的，
   所以把粗的部分去掉掌心圆盘，剩下的又长又不朝上的那块就是小臂，朝它那一侧的轮廓点不参与。
@@ -22,6 +24,7 @@ class HandFeatures:
     far: tuple = None              # 参与计算的最远轮廓点
     arm_dir: tuple = None          # 小臂方向的单位向量；没找到小臂时为 None
     open_ratio: float = 0.0
+    solidity: float = 0.0          # 实心度：手掌部分（去掉小臂）面积 ÷ 其凸包面积
     bbox: tuple = None
     edge: bool = False             # 掩膜贴到操作框左 / 右 / 上边界（形状被裁掉，不可信）
 
@@ -118,11 +121,35 @@ def arm_direction(dt, center, radius, fcfg):
     return best
 
 
-def classify(open_ratio, fcfg):
-    """原始判定：低于下阈值为拳，高于上阈值为掌，中间交给时序滞回。"""
-    if open_ratio < fcfg["fist_max_ratio"]:
+def compute_solidity(filled, center, radius, arm, fcfg):
+    """实心度：以掌心为原点，取沿小臂方向投影 <= hand_cut * r 的填充像素，面积 ÷ 凸包面积。
+
+    小臂方向没找到时按正下方 (0, 1)，和排除小臂的约定一致。像素少于 20 个或凸包面积为 0 返回 0。
+    """
+    ex = arm if arm is not None else (0.0, 1.0)
+    ys, xs = np.nonzero(filled)
+    proj = (xs - center[0]) * ex[0] + (ys - center[1]) * ex[1]
+    keep = proj <= fcfg.get("hand_cut", 1.0) * radius
+    n = int(np.count_nonzero(keep))
+    if n < 20:
+        return 0.0
+    pts = np.stack([xs[keep], ys[keep]], axis=1).astype(np.int32).reshape(-1, 1, 2)
+    area = cv2.contourArea(cv2.convexHull(pts))
+    return float(n / area) if area > 0 else 0.0
+
+
+def classify(open_ratio, solidity, edge, fcfg):
+    """原始判定：又紧又实心为拳，指缝多或张开度大为掌，其余交给时序滞回。
+
+    张开度在严格上限以下，要实心度达到 fist_min_solidity；在严格上限和宽上限之间
+    （侧握的拳），要求更高的实心度。手被操作框边界裁住（edge）时形状不可信，只用严格上限。
+    """
+    strict = fcfg["fist_max_ratio"]
+    upper = strict if edge else fcfg.get("fist_max_ratio_wide", strict)
+    need = fcfg.get("fist_min_solidity", 0.88) if open_ratio < strict else fcfg.get("fist_min_solidity_wide", 0.90)
+    if open_ratio < upper and solidity >= need:
         return "fist"
-    if open_ratio > fcfg["palm_min_ratio"]:
+    if solidity < fcfg.get("palm_max_solidity", 0.88) or open_ratio > fcfg["palm_min_ratio"]:
         return "palm"
     return "between"
 
@@ -198,12 +225,14 @@ def extract(mask, cfg):
     idx = np.nonzero(ok)[0]
     j = int(idx[np.argmax(dist[idx])])
     ratio = float(dist[j]) / radius
-    gesture = classify(ratio, fcfg)
+    edge = touches_edge(mask, fcfg, center, radius, arm)
+    solidity = compute_solidity(filled, center, radius, arm, fcfg)
+    gesture = classify(ratio, solidity, edge, fcfg)
     # 最远点落在操作框的上边界上：手指伸出了画面，量到的张开度只是下限。
     # 这时"握拳"的结论不可信（光标移到房间顶部时指尖就会出框），改成 between 保持原状态
     if gesture == "fist" and pts[j][1] <= fcfg.get("clip_margin", 3):
         gesture = "between"
     return HandFeatures(gesture, contour, cv2.convexHull(contour),
                         (float(center[0]), float(center[1])), radius,
-                        (int(pts[j][0]), int(pts[j][1])), arm, ratio, cv2.boundingRect(contour),
-                        touches_edge(mask, fcfg, center, radius, arm))
+                        (int(pts[j][0]), int(pts[j][1])), arm, ratio, solidity, cv2.boundingRect(contour),
+                        edge)

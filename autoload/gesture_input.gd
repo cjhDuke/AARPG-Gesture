@@ -39,8 +39,6 @@ var is_fist: bool = false
 ## 识别端是否已有背景模型 / 是否正在采集背景
 var calibrated: bool = false
 var calibrating: bool = false
-## 标定倒计时剩余秒数（向上取整）；0 = 不在倒计时（采集阶段或没在标定）
-var calib_countdown: int = 0
 
 ## 最近一张画面包的纹理（还没收到过为 null）；练习场的 CAMERA 手影用
 var frame_texture: ImageTexture :
@@ -124,7 +122,6 @@ func _on_state(st: Dictionary) -> void:
 	hand_pos = Vector2(float(st.get("px", 0.5)), float(st.get("py", 0.5)))
 	calibrated = bool(st.get("calibrated", false))
 	calibrating = bool(st.get("calibrating", false))
-	calib_countdown = int(st.get("calib_countdown", 0))
 	_set_fist(gesture == "fist")
 	last_state = st
 	state_updated.emit(st)
@@ -158,7 +155,6 @@ func _set_connected(v: bool) -> void:
 		hand_pos = Vector2(0.5, 0.5)
 		calibrated = false
 		calibrating = false
-		calib_countdown = 0
 		_set_fist(false)
 		packet_interval_ms = 0.0
 	connection_changed.emit(v)
