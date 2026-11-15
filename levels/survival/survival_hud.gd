@@ -15,15 +15,16 @@ signal title_pressed
 @onready var congrats_music : AudioStreamPlayer = %CongratsMusic
 
 ## 背包格子（右上角心形下面）：左上角位置、格子间距、苹果图标在图集里的区域
-const BAG_POS := Vector2( 364, 34 )
-const BAG_STEP : float = 14.0
+const BAG_POS := Vector2( 376, 32 )
+const BAG_STEP : float = 18.0
 const BAG_ICON_REGION := Rect2( 200, 8, 16, 16 )
 
-## 已拥有强化的图标行（左下角状态行左边）：左上角位置、图标大小和间距
-const UPGRADE_POS := Vector2( 4, 252 )
-const UPGRADE_ICON : float = 12.0
-const UPGRADE_STEP : float = 14.0
+## 已拥有强化的图标行：状态行上方，最多九枚原生 24px 图标。
+const UPGRADE_POS := Vector2( 8, 218 )
+const UPGRADE_ICON : float = 24.0
+const UPGRADE_STEP : float = 27.0
 
+var _upgrade_frame : Panel
 var _banner_tween : Tween
 var _upgrade_icons : Array[Control] = []
 var _bag_icons : Array[TextureRect] = []
@@ -33,15 +34,41 @@ const BOSS_BAR_POS := Vector2( 168, 27 )
 
 
 func _ready() -> void:
+	$Root.theme = DungeonTheme.THEME
+	banner_label.add_theme_font_override( "font", DungeonTheme.TITLE_FONT )
+	result_title.add_theme_font_override( "font", DungeonTheme.TITLE_FONT )
+	# Slim framing leaves native pixels and level marks unobstructed.
+	_upgrade_frame = _make_frame( Rect2( 4, 216, 248, 33 ) )
+	_upgrade_frame.visible = false
+	$Root.add_child( _upgrade_frame )
+	$Root.move_child( _upgrade_frame, 0 )
+	var status_frame := _make_frame( Rect2( 0, 250, 480, 20 ) )
+	status_label.add_sibling( status_frame )
+	$Root.move_child( status_frame, status_label.get_index() )
+	var result_frame := Panel.new()
+	result_frame.position = Vector2( 90, 24 )
+	result_frame.size = Vector2( 300, 216 )
+	result_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	result_frame.add_theme_stylebox_override( "panel", DungeonTheme.panel() )
+	result_panel.add_child( result_frame )
+	result_panel.move_child( result_frame, 1 )
 	banner_label.modulate.a = 0.0
 	result_panel.visible = false
 	retry_button.pressed.connect( retry_pressed.emit )
 	title_button.pressed.connect( title_pressed.emit )
 
 
-func _process( _delta : float ) -> void:
-	if trophy.visible:
-		trophy.frame = int( Time.get_ticks_msec() / 150 ) % 8
+func _make_frame( rect : Rect2 ) -> Panel:
+	var frame := Panel.new()
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.position = rect.position
+	frame.size = rect.size
+	var style := StyleBoxFlat.new()
+	style.bg_color = DungeonTheme.BACKGROUND
+	style.border_color = DungeonTheme.GOLD
+	style.set_border_width_all( 1 )
+	frame.add_theme_stylebox_override( "panel", style )
+	return frame
 
 
 ## total_waves 为 0 表示 Boss 关（没有波次），显示 BOSS
@@ -58,6 +85,7 @@ func show_boss_bar() -> void:
 		_boss_bar = BossBar.new()
 		_boss_bar.position = BOSS_BAR_POS
 		$Root.add_child( _boss_bar )
+		$Root.move_child( _boss_bar, result_panel.get_index() )
 	_boss_bar.visible = true
 
 
@@ -91,7 +119,7 @@ func set_bag( count : int, capacity : int ) -> void:
 		_bag_icons.append( icon )
 	for i in _bag_icons.size():
 		_bag_icons[i].visible = i < capacity
-		_bag_icons[i].modulate = Color.WHITE if i < count else Color( 0, 0, 0, 0.45 )
+		_bag_icons[i].modulate = Color.WHITE if i < count else Color( 0.35, 0.28, 0.24, 0.65 )
 
 
 ## 已拥有的强化用小图标排成一行，图标底部用小点标出等级（levels 是 { id: 等级 }）
@@ -99,11 +127,14 @@ func set_upgrades( levels : Dictionary ) -> void:
 	for c in _upgrade_icons:
 		c.queue_free()
 	_upgrade_icons.clear()
+	_upgrade_frame.visible = not levels.is_empty()
+	_upgrade_frame.size.x = 8.0 + maxf( 0.0, levels.size() - 1 ) * UPGRADE_STEP + UPGRADE_ICON
 	var i := 0
 	for id in levels:
 		var icon := Upgrades.Icon.new( id, UPGRADE_ICON, int( levels[id] ) )
 		icon.position = UPGRADE_POS + Vector2( UPGRADE_STEP * i, 0 )
 		$Root.add_child( icon )
+		$Root.move_child( icon, result_panel.get_index() )
 		_upgrade_icons.append( icon )
 		i += 1
 
@@ -121,6 +152,7 @@ func show_banner( text : String ) -> void:
 ## 显示结算面板并暂停游戏；RETRY 获得焦点，回车确认（手势不参与菜单操作）
 func show_result( victory : bool, kills : int, best : int ) -> void:
 	result_title.text = "VICTORY" if victory else "GAME OVER"
+	result_title.add_theme_color_override( "font_color", DungeonTheme.GOLD_BRIGHT if victory else Color( "#d98775" ) )
 	result_stats.text = "KILLS %d   BEST %d" % [ kills, best ]
 	trophy.visible = victory
 	if victory:

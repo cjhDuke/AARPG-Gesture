@@ -8,7 +8,7 @@ const COMPACT_SIZE := Vector2(64, 48)
 const FULL_IMAGE_SIZE := Vector2(PANEL_W, 80)
 const FULL_SIZE := Vector2(PANEL_W, 124)
 enum Mode { COMPACT, FULL, HIDDEN }
-const FONT_SIZE := 16
+const FONT_SIZE := 12
 const STAGE_NAMES := ["RAW", "DIFF", "MASK", "MORPH"]
 
 var _gi: Node
@@ -20,20 +20,26 @@ var _line_perf: Label
 var _line_stage: Label
 var _stage := 0
 var _mode := Mode.COMPACT
-var _bg: ColorRect
+var _bg: Panel
 
 
 func _ready() -> void:
 	_gi = get_parent()
 	_root = Control.new()
+	_root.theme = DungeonTheme.THEME
 	# 放左上角：右上角是 PlayerHud 的心形血量
-	_root.position = Vector2(2, 2)
+	_root.position = Vector2(4, 4)
 	_root.size = Vector2(PANEL_W, 124)
 	_ignore(_root)
 	add_child(_root)
 
-	_bg = ColorRect.new()
-	_bg.color = Color(0, 0, 0, 0.6)
+	_bg = Panel.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = DungeonTheme.BACKGROUND
+	style.border_color = DungeonTheme.GOLD
+	style.set_border_width_all(1)
+	_bg.add_theme_stylebox_override("panel", style)
+	_bg.position = Vector2(-2, -2)
 	_ignore(_bg)
 	_root.add_child(_bg)
 
@@ -51,8 +57,8 @@ func _ready() -> void:
 	_offline.size.x = PANEL_W
 	_offline.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_line_gesture = _make_label(Vector2(2, 80), "")
-	_line_perf = _make_label(Vector2(2, 93), "")
-	_line_stage = _make_label(Vector2(2, 106), "")
+	_line_perf = _make_label(Vector2(2, 94), "")
+	_line_stage = _make_label(Vector2(2, 108), "")
 
 	_gi.state_updated.connect(_on_state)
 	_gi.frame_updated.connect(func(t: ImageTexture) -> void: _image.texture = t)
@@ -67,7 +73,7 @@ func _apply_mode() -> void:
 	var full := _mode == Mode.FULL
 	_root.visible = full or (_mode == Mode.COMPACT and _gi.connected)
 	_root.size = FULL_SIZE if full else COMPACT_SIZE
-	_bg.size = _root.size
+	_bg.size = _root.size + Vector2(4, 4)
 	_image.size = FULL_IMAGE_SIZE if full else COMPACT_SIZE
 	_offline.visible = full and not _gi.connected
 	for l in [_line_gesture, _line_perf, _line_stage]:
