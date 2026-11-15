@@ -5,6 +5,18 @@ var hearts : Array[ HeartGUI ] = []
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
+	$Control.theme = DungeonTheme.THEME
+	var frame := Panel.new()
+	frame.position = Vector2( 352, 4 )
+	frame.size = Vector2( 96, 46 )
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = DungeonTheme.BACKGROUND
+	style.border_color = DungeonTheme.GOLD
+	style.set_border_width_all( 1 )
+	frame.add_theme_stylebox_override( "panel", style )
+	$Control.add_child( frame )
+	$Control.move_child( frame, 0 )
 	for child in $Control/HFlowContainer.get_children():
 		if child is HeartGUI:
 			hearts.append( child )

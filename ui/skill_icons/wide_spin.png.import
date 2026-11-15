@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cujrrhl1sgr8a"
-path="res://.godot/imported/congratulations.png-4be40814c32c7edbe93d0d4df1d367c5.ctex"
+uid="uid://bivt1fvj4fosi"
+path="res://.godot/imported/wide_spin.png-9cec9a4ccbcade8e07de2d4938fad06d.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://levels/survival/congratulations.png"
-dest_files=["res://.godot/imported/congratulations.png-4be40814c32c7edbe93d0d4df1d367c5.ctex"]
+source_file="res://ui/skill_icons/wide_spin.png"
+dest_files=["res://.godot/imported/wide_spin.png-9cec9a4ccbcade8e07de2d4938fad06d.ctex"]
 
 [params]
 

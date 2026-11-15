@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c65kfj4gflaxh"
-path="res://.godot/imported/wood_frame.png-c2313fb9a47d10a4c5a2c5b4f10c32cf.ctex"
+uid="uid://crsqahmmg2uex"
+path="res://.godot/imported/pierce.png-5d8cf566f4b66f70dc5d7b8cd921327a.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://ui/settings/assets/wood_frame.png"
-dest_files=["res://.godot/imported/wood_frame.png-c2313fb9a47d10a4c5a2c5b4f10c32cf.ctex"]
+source_file="res://ui/skill_icons/pierce.png"
+dest_files=["res://.godot/imported/pierce.png-5d8cf566f4b66f70dc5d7b8cd921327a.ctex"]
 
 [params]
 

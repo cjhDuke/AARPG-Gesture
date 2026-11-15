@@ -157,7 +157,7 @@ func _build() -> void:
 	root.theme = SKIN.make_theme()
 	root.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	var dim := ColorRect.new()
-	dim.color = Color(0.025, 0.02, 0.02, 0.84)
+	dim.color = Color(DungeonTheme.BACKGROUND, 0.78)
 	root.add_child(dim)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_panel = Panel.new()
@@ -167,18 +167,16 @@ func _build() -> void:
 	_panel.offset_right = 220
 	_panel.offset_top = -120
 	_panel.offset_bottom = 120
-	_panel.add_theme_stylebox_override("panel", SKIN.frame(preload("res://ui/settings/assets/wood_frame.png"), 8))
-	var heading := _label("SETTINGS", 16)
-	heading.add_theme_color_override("font_color", SKIN.GOLD)
-	_place(heading, _panel, Rect2(18, 10, 350, 22))
-	_close = _button("", _panel, hide_pause_menu)
-	_close.icon = preload("res://ui/settings/assets/close_icon.png")
-	_close.expand_icon = true
+	_panel.add_theme_stylebox_override("panel", DungeonTheme.panel())
+	var heading := _label("SETTINGS", 24)
+	heading.add_theme_font_override("font", DungeonTheme.TITLE_FONT)
+	_place(heading, _panel, Rect2(18, 9, 350, 28))
+	_close = _button("X", _panel, hide_pause_menu)
 	_close.tooltip_text = "Close settings (Esc)"
 	_close.position = Vector2(396, 9)
 	_close.size = Vector2(28, 28)
 	var inset := Panel.new()
-	inset.add_theme_stylebox_override("panel", SKIN.flat(Color("#291b17"), Color("#65452c")))
+	inset.add_theme_stylebox_override("panel", SKIN.flat(DungeonTheme.BACKGROUND, DungeonTheme.GOLD))
 	_place(inset, _panel, Rect2(16, 42, 164, 124))
 	var scroll := ScrollContainer.new()
 	_place(scroll, inset, Rect2(7, 5, 150, 112))
@@ -195,11 +193,8 @@ func _build() -> void:
 	_audio_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for tab in [_game_tab, _audio_tab]:
 		tab.toggle_mode = true
-		tab.add_theme_stylebox_override("pressed", SKIN.flat(SKIN.GOLD, SKIN.INK, 2))
-		tab.add_theme_stylebox_override("hover_pressed", SKIN.flat(SKIN.GOLD.lightened(0.12), SKIN.INK, 2))
-		tab.add_theme_stylebox_override("focus", SKIN.flat(Color.TRANSPARENT, SKIN.INK))
-		tab.add_theme_color_override("font_pressed_color", Color("#291b17"))
-		tab.add_theme_color_override("font_hover_pressed_color", Color("#291b17"))
+		tab.add_theme_stylebox_override("pressed", DungeonTheme.panel(true))
+		tab.add_theme_stylebox_override("hover_pressed", DungeonTheme.panel(true))
 	_game = GridContainer.new()
 	_game.columns = 2
 	_game.add_theme_constant_override("h_separation", 5)
@@ -264,13 +259,13 @@ func _build_confirmation() -> void:
 	dialog.offset_right = 148
 	dialog.offset_top = -56
 	dialog.offset_bottom = 56
-	dialog.add_theme_stylebox_override("panel", SKIN.frame(preload("res://ui/settings/assets/wood_frame.png"), 8))
+	dialog.add_theme_stylebox_override("panel", DungeonTheme.panel())
 	_confirm_text = _label("")
 	_confirm_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_place(_confirm_text, dialog, Rect2(12, 17, 272, 22))
 	_confirm_note = _label("CURRENT PROGRESS WILL BE LOST", 9)
 	_confirm_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_confirm_note.add_theme_color_override("font_color", Color("#d7ad56"))
+	_confirm_note.add_theme_color_override("font_color", DungeonTheme.GOLD_BRIGHT)
 	_place(_confirm_note, dialog, Rect2(12, 42, 272, 14))
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 10)
@@ -292,7 +287,18 @@ func _refresh() -> void:
 	for child in _bag.get_children():
 		_bag.remove_child(child)
 		child.queue_free()
-	_bag.add_child(_label("ADVENTURER", 12))
+	var heading := HBoxContainer.new()
+	var bag_texture := AtlasTexture.new()
+	bag_texture.atlas = preload("res://ui/theme/ui_icons.png")
+	bag_texture.region = Rect2(224, 0, 32, 32)
+	var bag_icon := TextureRect.new()
+	bag_icon.texture = bag_texture
+	heading.add_child(bag_icon)
+	var bag_title := _label("BAG", 24)
+	bag_title.add_theme_font_override("font", DungeonTheme.TITLE_FONT)
+	bag_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	heading.add_child(bag_title)
+	_bag.add_child(heading)
 	if not _title_context and bag_provider.is_valid():
 		var info: Dictionary = bag_provider.call()
 		var status := _label(str(info.get("status", "")), 9)
@@ -303,9 +309,10 @@ func _refresh() -> void:
 			var icon := TextureRect.new()
 			var tex := AtlasTexture.new()
 			tex.atlas = ITEMS_TEXTURE
-			tex.region = row["region"]
+			var region: Rect2 = row["region"]
+			tex.region = region.grow(-4.0)
 			icon.texture = tex
-			icon.custom_minimum_size = Vector2(20, 24)
+			icon.custom_minimum_size = Vector2(24, 24)
 			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 			line.add_child(icon)
@@ -313,7 +320,9 @@ func _refresh() -> void:
 			words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			words.add_theme_constant_override("separation", -2)
 			words.add_child(_label("%s  %s" % [row["name"], row["value"]]))
-			words.add_child(_label(str(row.get("note", "")), 9))
+			var note := _label(str(row.get("note", "")), 8)
+			note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			words.add_child(note)
 			line.add_child(words)
 			_bag.add_child(line)
 		_bag.add_child(_label("UPGRADES", 12))
@@ -341,8 +350,6 @@ func _set_page(audio_page: bool) -> void:
 	_slot_status.visible = not audio_page
 	_game_tab.set_pressed_no_signal(not audio_page)
 	_audio_tab.set_pressed_no_signal(audio_page)
-	_game_tab.add_theme_color_override("font_focus_color", SKIN.INK if audio_page else Color("#291b17"))
-	_audio_tab.add_theme_color_override("font_focus_color", Color("#291b17") if audio_page else SKIN.INK)
 	_update_focus()
 	if audio_page:
 		_sliders[&"Master"].grab_focus()
