@@ -292,6 +292,9 @@ func _valid_checkpoint(value: Variant) -> bool:
 	var loot: Variant = data.get("loot")
 	if not loot is Dictionary or not _integer(loot.get("bag_apples"), 0, LootDropper.BAG_CAPACITY) or not _integer(loot.get("kills_since_apple"), 0, LootDropper.APPLE_PITY_KILLS - 1):
 		return false
+	# 旧版本 1/2 检查点没有药水库存，按 0 恢复。
+	if not _integer(loot.get("bag_potions", 0), 0, LootDropper.BAG_CAPACITY):
+		return false
 	if not _number(loot.get("eat_timer"), 0.0, LootDropper.EAT_DELAY):
 		return false
 	var picked: Variant = loot.get("picked")

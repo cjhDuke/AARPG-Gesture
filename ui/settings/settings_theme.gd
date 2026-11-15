@@ -22,6 +22,32 @@ static func make_theme() -> Theme:
 		style.set_content_margin(SIDE_BOTTOM, 4)
 		theme.set_stylebox(state, "Button", style)
 	theme.set_stylebox("hover_pressed", "Button", theme.get_stylebox("pressed", "Button"))
+	# Category tabs use a flat strip, separate from framed action buttons.
+	theme.set_type_variation("SettingsTab", "Button")
+	theme.set_font_size("font_size", "SettingsTab", 14)
+	for state: String in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
+		var selected := state in ["pressed", "hover_pressed"]
+		var hovered := state in ["hover", "hover_pressed"]
+		var background := GOLD if selected else DungeonTheme.BACKGROUND
+		if hovered:
+			background = DungeonTheme.GOLD_BRIGHT if selected else DungeonTheme.PANEL
+		var style := flat(background, DungeonTheme.GOLD_BRIGHT if selected else DungeonTheme.PANEL, 0)
+		style.border_width_bottom = 3 if selected else 1
+		style.set_content_margin(SIDE_LEFT, 8)
+		style.set_content_margin(SIDE_RIGHT, 8)
+		style.set_content_margin(SIDE_TOP, 3)
+		style.set_content_margin(SIDE_BOTTOM, 5)
+		theme.set_stylebox(state, "SettingsTab", style)
+	for state: String in ["font_color", "font_hover_color", "font_disabled_color"]:
+		theme.set_color(state, "SettingsTab", DungeonTheme.TEXT if state == "font_hover_color" else DungeonTheme.MUTED)
+	theme.set_color("font_pressed_color", "SettingsTab", DungeonTheme.BACKGROUND)
+	theme.set_color("font_hover_pressed_color", "SettingsTab", DungeonTheme.BACKGROUND)
+	var tab_focus := flat(Color.TRANSPARENT, DungeonTheme.GOLD_BRIGHT)
+	tab_focus.expand_margin_left = -2
+	tab_focus.expand_margin_right = -2
+	tab_focus.expand_margin_top = -2
+	tab_focus.expand_margin_bottom = -4
+	theme.set_stylebox("focus", "SettingsTab", tab_focus)
 	theme.set_stylebox("slider", "HSlider", flat(DungeonTheme.BACKGROUND, DungeonTheme.MUTED))
 	theme.set_stylebox("grabber_area", "HSlider", flat(DungeonTheme.PANEL, GOLD))
 	theme.set_stylebox("grabber_area_highlight", "HSlider", flat(GOLD, INK))

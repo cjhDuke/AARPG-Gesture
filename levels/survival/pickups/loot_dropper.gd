@@ -10,12 +10,12 @@ const APPLE_PITY_KILLS : int = 10
 ## 同时掉宝石和苹果时，两者的水平错开距离（像素）
 const SPLIT_OFFSET : float = 8.0
 
-## 背包里苹果数变化时发出（HUD 用）
+## 背包里任一消耗品变化时发出（HUD 用）
 signal bag_changed( count : int, capacity : int )
 
-## 背包最多存几个苹果
+## 苹果与药水各自的库存上限
 const BAG_CAPACITY : int = 3
-## 主角不满血且背包有苹果时，隔这么久自动吃一个（秒）
+## 仅用于兼容旧检查点的自动食用计时
 const EAT_DELAY : float = 0.6
 
 ## 为 false 时不掉苹果（回旋镖练习场只掉宝石）
@@ -23,46 +23,29 @@ var apples_enabled : bool = true
 ## 念力来源（宝石 / 药水用）
 var controller : HandController
 
-## 背包里的苹果：满血时捡到的苹果存这里，受伤后自动吃
+## 苹果与药水分别存放，拾取后由玩家决定使用时机
 var bag_apples : int = 0
+var bag_potions : int = 0
 
 ## 本局各类掉落物的拾取次数（下标是 Pickup.Kind），暂停菜单的背包面板用
 var picked : Array[int] = [ 0, 0, 0 ]
 
 var _kills_since_apple : int = 0
-var _eat_timer : float = 0.0
 
 
-func _process( delta : float ) -> void:
-	var player := PlayerManager.player
-	if bag_apples <= 0 or player == null or player.is_dead or player.hp >= player.max_hp:
-		_eat_timer = 0.0
-		return
-	_eat_timer += delta
-	if _eat_timer < EAT_DELAY:
-		return
-	_eat_timer = 0.0
-	bag_apples -= 1
-	bag_changed.emit( bag_apples, BAG_CAPACITY )
-	player.update_hp( 1 )
-	PlayerHud.flash_heal()
-	PlayerManager.play_audio( Pickup.HP_UP_SOUND )
-	Pickup.show_float_text( get_parent(), player.global_position + Vector2( 0, -48 ), "+1 HP" )
-
-
-func bag_has_room() -> bool:
-	return bag_apples < BAG_CAPACITY
+func bag_has_room( kind : int = Pickup.Kind.APPLE ) -> bool:
+	return ( bag_potions if kind == Pickup.Kind.POTION else bag_apples ) < BAG_CAPACITY
 
 
 func get_checkpoint_state() -> Dictionary:
-	return {"bag_apples": bag_apples, "picked": picked.duplicate(), "kills_since_apple": _kills_since_apple, "eat_timer": _eat_timer}
+	return {"bag_apples": bag_apples, "bag_potions": bag_potions, "picked": picked.duplicate(), "kills_since_apple": _kills_since_apple, "eat_timer": 0.0}
 
 
 func restore_checkpoint_state(data: Dictionary) -> void:
 	bag_apples = int(data["bag_apples"])
+	bag_potions = int(data.get("bag_potions", 0))
 	picked.assign(data["picked"])
 	_kills_since_apple = int(data["kills_since_apple"])
-	_eat_timer = float(data["eat_timer"])
 	bag_changed.emit(bag_apples, BAG_CAPACITY)
 
 
@@ -72,6 +55,46 @@ func store_apple() -> bool:
 		return false
 	bag_apples += 1
 	bag_changed.emit( bag_apples, BAG_CAPACITY )
+	return true
+
+
+func store_potion() -> bool:
+	if not bag_has_room( Pickup.Kind.POTION ):
+		return false
+	bag_potions += 1
+	bag_changed.emit( bag_apples, BAG_CAPACITY )
+	return true
+
+
+func can_use_item( kind : int ) -> bool:
+	var player : Player = PlayerManager.player
+	if player == null or player.is_dead:
+		return false
+	if kind == Pickup.Kind.APPLE:
+		return bag_apples > 0 and player.hp < player.max_hp
+	if kind == Pickup.Kind.POTION:
+		return bag_potions > 0 and ( player.hp < player.max_hp or ( is_instance_valid( controller ) and controller.psi < 1.0 ) )
+	return false
+
+
+func use_item( kind : int ) -> bool:
+	if not can_use_item( kind ):
+		return false
+	var player : Player = PlayerManager.player
+	var old_hp : int = player.hp
+	if kind == Pickup.Kind.APPLE:
+		bag_apples -= 1
+		player.update_hp( 1 )
+	else:
+		bag_potions -= 1
+		player.update_hp( 2 )
+		if is_instance_valid( controller ):
+			controller.add_psi( 1.0 )
+	if player.hp > old_hp:
+		PlayerHud.flash_heal()
+	PlayerManager.play_audio( Pickup.HP_UP_SOUND )
+	bag_changed.emit( bag_apples, BAG_CAPACITY )
+	Pickup.show_float_text( get_parent(), player.global_position + Vector2( 0, -48 ), "+%d HP%s" % [ player.hp - old_hp, "  PSI MAX" if kind == Pickup.Kind.POTION else "" ] )
 	return true
 
 
@@ -115,8 +138,8 @@ func spawn_pickup( kind : int, from : Vector2, dest : Vector2, lifetime : float 
 ## 清掉场上所有掉落物、飘字、保底计数和背包
 func clear() -> void:
 	_kills_since_apple = 0
-	_eat_timer = 0.0
 	bag_apples = 0
+	bag_potions = 0
 	picked = [ 0, 0, 0 ]
 	bag_changed.emit( bag_apples, BAG_CAPACITY )
 	clear_world_drops()

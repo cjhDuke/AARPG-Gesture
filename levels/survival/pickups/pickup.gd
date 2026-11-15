@@ -1,5 +1,5 @@
 class_name Pickup extends Node2D
-## 掉落物：苹果（回 1 点血）、宝石（回 25% 念力）、药水（回 2 点血并回满念力）。
+## 掉落物：苹果 / 药水入包后手动使用，宝石立即回 25% 念力。
 ## 生成时有个小弹跳，存在 lifetime 秒（最后 2 秒闪烁）后消失。
 ## 主角走近（PICKUP_DIST）直接拾取；场上飞行中的回旋镖碰到它时，它会飞向主角，到达后生效。
 ## 纯代码建节点，由 LootDropper.spawn_pickup() 创建。
@@ -40,7 +40,7 @@ var kind : int = Kind.APPLE
 var lifetime : float = DEFAULT_LIFETIME
 ## 用来读 / 加念力；为空时视为念力已满
 var controller : HandController
-## 背包（满血时苹果存进去）；为空时满血的苹果不拾取
+## 消耗品拾取后放入背包，宝石立即生效
 var loot : LootDropper
 
 var _age : float = 0.0
@@ -80,16 +80,14 @@ func pop_to( dest : Vector2 ) -> void:
 		.set_trans( Tween.TRANS_QUAD ).set_ease( Tween.EASE_IN )
 
 
-## 主角当前是否该拾取它（满血且背包也满的苹果不拾取；药水血和念力都满才不拾取；宝石总是拾取）
+## 消耗品只检查各自库存容量，不受当前血量和念力限制
 func can_collect() -> bool:
 	var player := PlayerManager.player
 	if player == null or player.is_dead:
 		return false
 	match kind:
-		Kind.APPLE:
-			return player.hp < player.max_hp or ( is_instance_valid( loot ) and loot.bag_has_room() )
-		Kind.POTION:
-			return player.hp < player.max_hp or _psi() < 1.0
+		Kind.APPLE, Kind.POTION:
+			return is_instance_valid( loot ) and loot.bag_has_room( kind )
 	return true
 
 
@@ -160,22 +158,16 @@ func _start_flying() -> void:
 	_sprite.position.y = REST_Y
 
 
-func _psi() -> float:
-	return controller.psi if is_instance_valid( controller ) else 1.0
-
-
-## 生效：回血 / 回念力、音效、飘字，然后消失
+## 拾取：消耗品入包 / 宝石回念力，音效、飘字，然后消失
 func _apply( player : Player ) -> void:
+	# 吸附途中库存可能已满；保留地面物品，避免扣除或重复计数。
+	if not can_collect():
+		_flying = false
+		return
 	var text := ""
 	match kind:
 		Kind.APPLE:
-			if player.hp < player.max_hp:
-				player.update_hp( 1 )
-				PlayerHud.flash_heal()
-				PlayerManager.play_audio( HP_UP_SOUND )
-				text = "+1 HP"
-			elif is_instance_valid( loot ) and loot.store_apple():
-				# 满血：存进背包，受伤后由 LootDropper 自动吃
+			if loot.store_apple():
 				PlayerManager.play_audio( PICKUP_SOUND )
 				text = "APPLE SAVED"
 		Kind.GEM:
@@ -184,12 +176,9 @@ func _apply( player : Player ) -> void:
 			PlayerManager.play_audio( PICKUP_SOUND )
 			text = "+PSI"
 		Kind.POTION:
-			player.update_hp( 2 )
-			PlayerHud.flash_heal()
-			if is_instance_valid( controller ):
-				controller.add_psi( 1.0 )
-			PlayerManager.play_audio( HP_UP_SOUND )
-			text = "+2 HP  PSI MAX"
+			if loot.store_potion():
+				PlayerManager.play_audio( PICKUP_SOUND )
+				text = "POTION SAVED"
 	if text != "":
 		show_float_text( get_parent(), player.global_position + Vector2( 0, -48 ), text )
 	collected.emit( kind )

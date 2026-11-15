@@ -3,6 +3,8 @@ class_name SurvivalHud extends CanvasLayer
 
 signal retry_pressed
 signal title_pressed
+signal item_used( kind : int )
+var bag_provider : Callable
 
 @onready var status_label : Label = %StatusLabel
 @onready var banner_label : Label = %BannerLabel
@@ -14,11 +16,6 @@ signal title_pressed
 @onready var title_button : Button = %TitleButton
 @onready var congrats_music : AudioStreamPlayer = %CongratsMusic
 
-## 背包格子（右上角心形下面）：左上角位置、格子间距、苹果图标在图集里的区域
-const BAG_POS := Vector2( 376, 32 )
-const BAG_STEP : float = 18.0
-const BAG_ICON_REGION := Rect2( 200, 8, 16, 16 )
-
 ## 已拥有强化的图标行：状态行上方，最多九枚原生 24px 图标。
 const UPGRADE_POS := Vector2( 8, 218 )
 const UPGRADE_ICON : float = 24.0
@@ -27,7 +24,7 @@ const UPGRADE_STEP : float = 27.0
 var _upgrade_frame : Panel
 var _banner_tween : Tween
 var _upgrade_icons : Array[Control] = []
-var _bag_icons : Array[TextureRect] = []
+var _item_buttons : Dictionary = {}
 ## Boss 血条（只在 Boss 关存在）：左上角位置在手势提示框正下方，居中偏右给左边的名字留位置
 var _boss_bar : BossBar
 const BOSS_BAR_POS := Vector2( 168, 27 )
@@ -122,22 +119,30 @@ func is_boss_bar_visible() -> bool:
 	return _boss_bar != null and _boss_bar.visible
 
 
-## 背包显示：capacity 个苹果格子，前 count 个点亮，其余是暗色剪影
+## 心形下方的两种库存，点击或按 Q / E 使用
 func set_bag( count : int, capacity : int ) -> void:
-	while _bag_icons.size() < capacity:
-		var tex := AtlasTexture.new()
-		tex.atlas = Pickup.ITEMS_TEXTURE
-		tex.region = BAG_ICON_REGION
-		var icon := TextureRect.new()
-		icon.texture = tex
-		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		icon.position = BAG_POS + Vector2( BAG_STEP * _bag_icons.size(), 0 )
-		$Root.add_child( icon )
-		$Root.move_child( icon, 0 )
-		_bag_icons.append( icon )
-	for i in _bag_icons.size():
-		_bag_icons[i].visible = i < capacity
-		_bag_icons[i].modulate = Color.WHITE if i < count else Color( 0.35, 0.28, 0.24, 0.65 )
+	if _item_buttons.is_empty():
+		for kind : int in [ Pickup.Kind.APPLE, Pickup.Kind.POTION ]:
+			var button := Button.new()
+			var tex := AtlasTexture.new()
+			tex.atlas = Pickup.ITEMS_TEXTURE
+			tex.region = Pickup.REGIONS[kind].grow( -8 )
+			button.icon = tex
+			button.add_theme_font_size_override( "font_size", 8 )
+			button.add_theme_stylebox_override( "normal", StyleBoxEmpty.new() )
+			button.add_theme_stylebox_override( "disabled", StyleBoxEmpty.new() )
+			button.position = Vector2( 354 + ( 46 if kind == Pickup.Kind.POTION else 0 ), 30 )
+			button.size = Vector2( 44, 16 )
+			button.focus_mode = Control.FOCUS_NONE
+			button.tooltip_text = "Apple (Q): +1 HP" if kind == Pickup.Kind.APPLE else "Potion (E): +2 HP, PSI MAX"
+			button.pressed.connect( item_used.emit.bind( kind ) )
+			$Root.add_child( button )
+			_item_buttons[kind] = button
+	var potions : int = int( bag_provider.call() ) if bag_provider.is_valid() else 0
+	_item_buttons[Pickup.Kind.APPLE].text = "Q %d/%d" % [ count, capacity ]
+	_item_buttons[Pickup.Kind.POTION].text = "E %d/%d" % [ potions, capacity ]
+	_item_buttons[Pickup.Kind.APPLE].disabled = count <= 0
+	_item_buttons[Pickup.Kind.POTION].disabled = potions <= 0
 
 
 ## 已拥有的强化用小图标排成一行，图标底部用小点标出等级（levels 是 { id: 等级 }）
