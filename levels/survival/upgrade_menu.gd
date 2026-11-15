@@ -87,6 +87,7 @@ func _ready() -> void:
 	_select( n >> 1 )
 
 	_audio = AudioStreamPlayer.new()
+	_audio.bus = &"SFX"
 	_audio.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child( _audio )
 	_play( APPEAR_SOUND )

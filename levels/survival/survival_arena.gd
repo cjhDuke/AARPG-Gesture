@@ -42,6 +42,7 @@ var _map_path : String = ""
 var _run_id : int = 0
 ## _advance_stage 协程正在跑（淡出 / 换关 / 淡入）；重开和练习场跳关会递增 _run_id 作废它，并把本标记清掉
 var _stage_changing : bool = false
+var _checkpoint: Dictionary = {}
 
 
 func _ready() -> void:
@@ -70,7 +71,11 @@ func _ready() -> void:
 	wave_timer.timeout.connect( _begin_wave )
 	hud.retry_pressed.connect( _on_retry_pressed )
 	hud.title_pressed.connect( _on_title_pressed )
-	_start_run()
+	var checkpoint := SaveManager.take_pending_checkpoint()
+	if checkpoint.is_empty():
+		_start_run()
+	else:
+		_restore_checkpoint(checkpoint)
 
 
 func _free_level() -> void:
@@ -87,6 +92,7 @@ func _free_level() -> void:
 
 ## 开始（或重新开始）一局
 func _start_run() -> void:
+	_checkpoint = {}
 	_clear_death_fx()
 	_clear_rewards()
 	_clear_boss()
@@ -121,6 +127,7 @@ func _begin_wave() -> void:
 		return
 	wave += 1
 	_wave_hurt = false
+	_capture_checkpoint()
 	hud.show_banner( "WAVE %d" % wave )
 	spawner.start_wave( _stage_data["waves"][wave - 1] )
 	_update_status()
@@ -153,12 +160,56 @@ func _is_boss_stage() -> bool:
 ## Boss 关开场：巫师淡入登场（登场期间不攻击），血条显示
 func _begin_boss() -> void:
 	_clear_boss()
+	_wave_hurt = false
+	_capture_checkpoint()
 	_boss = WizardBoss.spawn( self, spawner, controller )
 	_boss.hp_changed.connect( hud.set_boss_hp )
 	_boss.defeated.connect( _on_boss_defeated )
 	hud.show_boss_bar()
 	hud.set_boss_hp( 1, _boss.seg_hp, _boss.segment_hp )
 	_update_status()
+
+
+func can_save_checkpoint() -> bool:
+	if LevelManager.practice_mode or _checkpoint.is_empty() or _ended or _stage_changing or is_instance_valid(_chest) or is_instance_valid(_upgrade_menu) or not wave_timer.is_stopped():
+		return false
+	return is_instance_valid(_boss) if _is_boss_stage() else spawner.is_running()
+
+
+func get_checkpoint() -> Dictionary:
+	return _checkpoint.duplicate(true) if can_save_checkpoint() else {}
+
+
+func _capture_checkpoint() -> void:
+	_checkpoint = {
+		"stage": stage, "stage_name": _stage_data["name"],
+		"kind": _stage_data.get("type", "waves"), "wave": 1 if _is_boss_stage() else wave,
+		"hp": _player.hp, "psi": controller.psi, "upgrades": controller.owned_levels(),
+		"kills": kills, "loot": loot.get_checkpoint_state(),
+	}
+
+
+func _restore_checkpoint(data: Dictionary) -> void:
+	_run_id += 1
+	wave_timer.stop()
+	_load_stage(int(data["stage"]))
+	_ended = false
+	PlayerManager.reset_player()
+	controller.reset()
+	for id in data["upgrades"]:
+		controller.set_upgrade_level(id, int(data["upgrades"][id]))
+	_player.hp = int(data["hp"])
+	_player.update_hp(0)
+	_player.global_position = HandController.CENTER
+	controller.psi = float(data["psi"])
+	controller.add_psi(0.0)
+	controller.enabled = true
+	loot.restore_checkpoint_state(data["loot"])
+	kills = int(data["kills"])
+	RunStats.best_kills = maxi(RunStats.best_kills, kills)
+	wave = int(data["wave"]) - 1 if not _is_boss_stage() else 0
+	_begin_wave()
+	run_started.emit()
 
 
 func _on_boss_defeated() -> void:
@@ -311,7 +362,7 @@ func _advance_stage_flow() -> void:
 	await SceneTransition.fade_out()
 	if id != _run_id or _ended or not is_inside_tree():
 		return
-	loot.clear()
+	loot.clear_world_drops()
 	spawner.clear()
 	for c in get_children():
 		if c is Boomerang:

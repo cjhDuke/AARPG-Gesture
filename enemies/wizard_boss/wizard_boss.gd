@@ -175,7 +175,7 @@ func _build_nodes() -> void:
 	add_child( _hurt )
 	_hurt.Damaged.connect( _on_damaged )
 	_audio = AudioStreamPlayer.new()
-	_audio.bus = &"Master"
+	_audio.bus = &"SFX"
 	add_child( _audio )
 	# 阴影放在关卡根下（和主角同层级，z 低于主角）
 	_shadow = BossExplosion.BossShadow.new()

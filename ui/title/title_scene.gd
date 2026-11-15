@@ -22,13 +22,18 @@ const MENU_SLIDE_TIME := 0.4
 @onready var orbit_boomerang: TitleBoomerang = $CanvasLayer/Control/OrbitBoomerang
 @onready var menu: VBoxContainer = $CanvasLayer/Control/Menu
 @onready var button_start: Button = $CanvasLayer/Control/Menu/Button_start
+@onready var button_saved: Button = $CanvasLayer/Control/Menu/Button_saved
 @onready var button_quit: Button = $CanvasLayer/Control/Menu/Button_quit
+@onready var button_settings: Button = $CanvasLayer/Control/Menu/Button_settings
 @onready var marker: TitleBoomerang = $CanvasLayer/Control/Menu/Marker
 @onready var audio_stream_player: AudioStreamPlayer = $AudioStreamPlayer
 
 var _marker_tween: Tween
 var _starting: bool = false
 var _marker_placed: bool = false
+var _settings_open: bool = false
+var _saved_open: bool = false
+var _title_active: bool = true
 
 
 func _ready() -> void:
@@ -40,6 +45,8 @@ func _ready() -> void:
 
 	PlayerHud.visible = false
 	PauseMenu.process_mode = Node.PROCESS_MODE_DISABLED
+	PauseMenu.hidden.connect(_on_settings_closed)
+	SavedGames.closed.connect(_on_saved_games_closed)
 
 	title_ui.visible = false
 	menu.visible = false
@@ -70,10 +77,12 @@ func setup_title_screen() -> void:
 
 	AudioManager.play_music(music)
 	button_start.pressed.connect(start_game)
+	button_saved.pressed.connect(open_saved_games)
 	button_quit.pressed.connect(quit_game)
+	button_settings.pressed.connect(open_settings)
 
 	# 竖排菜单：上下循环，左右也能在按钮间切换
-	var buttons: Array[Button] = [button_start, button_quit]
+	var buttons: Array[Button] = [button_start, button_saved, button_settings, button_quit]
 	for i in buttons.size():
 		var button := buttons[i]
 		var prev_path := buttons[(i + buttons.size() - 1) % buttons.size()].get_path()
@@ -93,6 +102,8 @@ func setup_title_screen() -> void:
 
 
 func _on_logo_finished() -> void:
+	if not _title_active:
+		return
 	orbit_boomerang.visible = true
 	var tw := title_ui.create_tween()
 	tw.tween_property(subtitle, "modulate:a", 1.0, 0.4)
@@ -103,22 +114,25 @@ func _show_menu() -> void:
 	menu.visible = true
 	# 等一帧让容器排好版，再记下按钮的最终位置
 	await get_tree().process_frame
-	if not is_inside_tree():
+	if not is_inside_tree() or not _title_active:
 		return
 	var final_y := menu.position.y
 	menu.position.y = final_y + MENU_SLIDE_DISTANCE
 	menu.modulate.a = 0.0
 	var tw := title_ui.create_tween()
+	tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 	tw.set_parallel(true)
 	tw.tween_property(menu, "position:y", final_y, MENU_SLIDE_TIME) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tw.tween_property(menu, "modulate:a", 1.0, MENU_SLIDE_TIME)
-	tw.chain().tween_callback(button_start.grab_focus)
+	tw.chain().tween_callback(func() -> void:
+		if _title_active and not _starting and not _settings_open and not _saved_open:
+			button_start.grab_focus())
 
 
 ## 选择标记滑到获得焦点的按钮左侧
 func _move_marker(button: Button) -> void:
-	if _starting:
+	if _starting or not _title_active:
 		return
 	var target := Vector2(MARKER_OFFSET_X, button.position.y + button.size.y * 0.5)
 	marker.visible = true
@@ -134,7 +148,7 @@ func _move_marker(button: Button) -> void:
 
 
 func start_game() -> void:
-	if _starting:
+	if _starting or _settings_open or _saved_open:
 		return
 	_starting = true
 	play_audio(button_press_audio)
@@ -149,10 +163,55 @@ func start_game() -> void:
 
 
 func quit_game() -> void:
+	if _settings_open or _saved_open:
+		return
 	get_tree().quit()
 
 
+func open_settings() -> void:
+	if _starting or _settings_open or _saved_open:
+		return
+	PauseMenu.show_title_settings()
+	if not PauseMenu.is_paused:
+		return
+	_settings_open = true
+	title_ui.process_mode = Node.PROCESS_MODE_DISABLED
+	for button in [button_start, button_saved, button_settings, button_quit]:
+		button.disabled = true
+
+
+func open_saved_games() -> void:
+	if _starting or _settings_open or _saved_open or not _title_active:
+		return
+	if not SavedGames.open(true):
+		return
+	_saved_open = true
+	title_ui.process_mode = Node.PROCESS_MODE_DISABLED
+	for button in [button_start, button_saved, button_settings, button_quit]:
+		button.disabled = true
+
+
+func _on_settings_closed() -> void:
+	if not _settings_open or not _title_active:
+		return
+	_settings_open = false
+	title_ui.process_mode = Node.PROCESS_MODE_INHERIT
+	for button in [button_start, button_saved, button_settings, button_quit]:
+		button.disabled = false
+
+
+func _on_saved_games_closed() -> void:
+	if not _saved_open or not _title_active:
+		return
+	_saved_open = false
+	title_ui.process_mode = Node.PROCESS_MODE_INHERIT
+	for button in [button_start, button_saved, button_settings, button_quit]:
+		button.disabled = false
+	button_saved.grab_focus()
+
+
 func exit_title_screen() -> void:
+	_title_active = false
 	PlayerManager.player.visible = true
 
 	PlayerHud.visible = true

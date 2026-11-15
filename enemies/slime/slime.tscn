@@ -772,6 +772,7 @@ next_state = NodePath("../Approach")
 script = ExtResource("12_843tw")
 
 [node name="AudioStreamPlayer2D" type="AudioStreamPlayer2D" parent="." unique_id=715979421]
+bus = &"SFX"
 volume_db = -10.0
 max_polyphony = 4
 
