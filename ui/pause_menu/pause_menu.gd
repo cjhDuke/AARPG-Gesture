@@ -9,6 +9,8 @@ const SKIN = preload("res://ui/settings/settings_theme.gd")
 const ITEMS_TEXTURE = preload("res://levels/survival/pickups/items.png")
 
 var bag_provider: Callable
+var item_user: Callable
+var _bag_use_buttons: Dictionary = {}
 var restart_handler: Callable
 var is_paused := false
 var root: Control
@@ -52,6 +54,7 @@ func _ready() -> void:
 
 func clear_level_hooks() -> void:
 	bag_provider = Callable()
+	item_user = Callable()
 	restart_handler = Callable()
 
 func _input(event: InputEvent) -> void:
@@ -64,10 +67,17 @@ func _input(event: InputEvent) -> void:
 			hide_pause_menu()
 		get_viewport().set_input_as_handled()
 
+	if is_paused:
+		_navigate_focus(event)
+
 func _unhandled_input(event: InputEvent) -> void:
 	if SavedGames.is_open:
 		return
 	if is_paused:
+		if not _confirm.visible and not _title_context and event is InputEventKey and event.pressed and not event.echo:
+			var key: int = event.physical_keycode if event.physical_keycode != 0 else event.keycode
+			if key == KEY_Q or key == KEY_E:
+				_use_bag_item(Pickup.Kind.APPLE if key == KEY_Q else Pickup.Kind.POTION)
 		# Never let an unused key reach the title or another gameplay modal.
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("pause"):
@@ -186,6 +196,7 @@ func _build() -> void:
 	_bag.add_theme_constant_override("separation", 4)
 	scroll.add_child(_bag)
 	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 0)
 	_place(tabs, _panel, Rect2(194, 42, 230, 26))
 	_game_tab = _button("GAME", tabs, _set_page.bind(false))
 	_audio_tab = _button("AUDIO", tabs, _set_page.bind(true))
@@ -193,8 +204,7 @@ func _build() -> void:
 	_audio_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for tab in [_game_tab, _audio_tab]:
 		tab.toggle_mode = true
-		tab.add_theme_stylebox_override("pressed", DungeonTheme.panel(true))
-		tab.add_theme_stylebox_override("hover_pressed", DungeonTheme.panel(true))
+		tab.theme_type_variation = &"SettingsTab"
 	_game = GridContainer.new()
 	_game.columns = 2
 	_game.add_theme_constant_override("h_separation", 5)
@@ -287,6 +297,7 @@ func _refresh() -> void:
 	for child in _bag.get_children():
 		_bag.remove_child(child)
 		child.queue_free()
+	_bag_use_buttons.clear()
 	var heading := HBoxContainer.new()
 	var bag_texture := AtlasTexture.new()
 	bag_texture.atlas = preload("res://ui/theme/ui_icons.png")
@@ -312,18 +323,26 @@ func _refresh() -> void:
 			var region: Rect2 = row["region"]
 			tex.region = region.grow(-4.0)
 			icon.texture = tex
-			icon.custom_minimum_size = Vector2(24, 24)
+			icon.custom_minimum_size = Vector2(20, 24)
 			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 			line.add_child(icon)
 			var words := VBoxContainer.new()
 			words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			words.add_theme_constant_override("separation", -2)
-			words.add_child(_label("%s  %s" % [row["name"], row["value"]]))
+			words.add_child(_label("%s  %s" % [row["name"], row["value"]], 10))
 			var note := _label(str(row.get("note", "")), 8)
 			note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			words.add_child(note)
 			line.add_child(words)
+			if row.has("kind"):
+				var kind := int(row["kind"])
+				var use := _button("USE %s" % ("Q" if kind == Pickup.Kind.APPLE else "E"), line, _use_bag_item.bind(kind))
+				use.custom_minimum_size.y = 16
+				use.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+				use.add_theme_font_size_override("font_size", 8)
+				use.disabled = not bool(row.get("can_use", false))
+				_bag_use_buttons[kind] = use
 			_bag.add_child(line)
 		_bag.add_child(_label("UPGRADES", 12))
 		var upgrades: Array = info.get("upgrades", [])
@@ -344,6 +363,17 @@ func _refresh() -> void:
 		_sliders[bus].editable = AudioManager.has_method("set_bus_volume")
 	_slot_status.text = "Manage saved checkpoints from SAVED GAMES." if not _title_context else "SAVED GAMES is available from the title menu."
 
+func _use_bag_item(kind: int) -> void:
+	if not item_user.is_valid() or not bool(item_user.call(kind)):
+		return
+	_refresh()
+	_update_focus()
+	var button: Button = _bag_use_buttons.get(kind)
+	if is_instance_valid(button) and not button.disabled:
+		button.grab_focus()
+	else:
+		_resume.grab_focus() if _game.visible else _sliders[&"Master"].grab_focus()
+
 func _set_page(audio_page: bool) -> void:
 	_game.visible = not audio_page
 	_audio.visible = audio_page
@@ -360,7 +390,7 @@ func _focusables(node: Node) -> Array[Control]:
 	var controls: Array[Control] = []
 	for child in node.get_children():
 		if child is Control and child.is_visible_in_tree() and (child is Button or child is HSlider):
-			if not (child is Button and child.disabled):
+			if not (child is Button and child.disabled) and not (child is HSlider and not child.editable):
 				controls.append(child)
 		controls.append_array(_focusables(child))
 	return controls
@@ -374,11 +404,61 @@ func _update_focus() -> void:
 		var next := controls[(i + 1) % controls.size()].get_path()
 		control.focus_previous = previous
 		control.focus_next = next
-		control.focus_neighbor_top = previous
-		control.focus_neighbor_bottom = next
-		if control is Button:
-			control.focus_neighbor_left = previous
-			control.focus_neighbor_right = next
+		# Directions are resolved at input time, after containers have laid out.
+		control.focus_neighbor_top = control.get_path()
+		control.focus_neighbor_bottom = control.get_path()
+		control.focus_neighbor_left = control.get_path()
+		control.focus_neighbor_right = control.get_path()
+
+func _navigate_focus(event: InputEvent) -> void:
+	var direction := Vector2.ZERO
+	if event.is_action_pressed("ui_up", true):
+		direction = Vector2.UP
+	elif event.is_action_pressed("ui_down", true):
+		direction = Vector2.DOWN
+	elif event.is_action_pressed("ui_left", true):
+		direction = Vector2.LEFT
+	elif event.is_action_pressed("ui_right", true):
+		direction = Vector2.RIGHT
+	else:
+		return
+	var controls := _focusables(_confirm if _confirm.visible else _panel)
+	var current := get_viewport().gui_get_focus_owner()
+	if current is HSlider and current in controls and direction.x != 0.0:
+		return
+	# Consume even at an edge so Godot's automatic search cannot leave the modal.
+	get_viewport().set_input_as_handled()
+	if controls.is_empty():
+		return
+	if current not in controls:
+		controls[0].grab_focus()
+		return
+	var origin := current.get_global_rect()
+	var best: Control
+	var best_aligned := false
+	var best_distance := INF
+	for candidate in controls:
+		if candidate == current or candidate.focus_mode == Control.FOCUS_NONE:
+			continue
+		var rect := candidate.get_global_rect()
+		if not rect.has_area():
+			continue
+		var offset := rect.get_center() - origin.get_center()
+		# Ignore center drift between differently sized controls in the same row/column.
+		if offset.dot(direction) <= origin.size.dot(direction.abs()) * 0.5:
+			continue
+		var aligned := false
+		if direction.x == 0.0:
+			aligned = minf(origin.end.x, rect.end.x) > maxf(origin.position.x, rect.position.x)
+		else:
+			aligned = minf(origin.end.y, rect.end.y) > maxf(origin.position.y, rect.position.y)
+		var distance := offset.length_squared()
+		if best == null or (aligned and not best_aligned) or (aligned == best_aligned and distance < best_distance):
+			best = candidate
+			best_aligned = aligned
+			best_distance = distance
+	if best != null:
+		best.grab_focus()
 
 func _ask(message: String, action: Callable, close_before_action := true, keep_open := false, note := "CURRENT PROGRESS WILL BE LOST") -> void:
 	_action_focus = get_viewport().gui_get_focus_owner()

@@ -61,9 +61,12 @@ func _ready() -> void:
 	loot.controller = controller
 	add_child( loot )
 	loot.bag_changed.connect( hud.set_bag )
+	hud.item_used.connect( use_bag_item )
+	hud.bag_provider = func() -> int: return loot.bag_potions
 	controller.upgrades_changed.connect( hud.set_upgrades )
 	hud.set_bag( 0, LootDropper.BAG_CAPACITY )
 	PauseMenu.bag_provider = _bag_info
+	PauseMenu.item_user = use_bag_item
 	PauseMenu.restart_handler = _start_run
 	spawner.enemy_destroyed_at.connect( loot.handle_enemy_destroyed )
 	spawner.enemy_killed.connect( _on_enemy_killed )
@@ -420,6 +423,20 @@ func debug_clear_wave() -> void:
 	spawner.debug_clear_wave()
 
 
+func _unhandled_input( event : InputEvent ) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		var key: int = event.physical_keycode if event.physical_keycode != 0 else event.keycode
+		if key == KEY_Q or key == KEY_E:
+			use_bag_item( Pickup.Kind.APPLE if key == KEY_Q else Pickup.Kind.POTION )
+			get_viewport().set_input_as_handled()
+
+
+func use_bag_item( kind : int ) -> bool:
+	if _ended or _stage_changing or LevelManager.is_loading_level or is_instance_valid( _upgrade_menu ):
+		return false
+	return is_instance_valid( loot ) and loot.use_item( kind )
+
+
 ## 暂停菜单背包面板的内容
 func _bag_info() -> Dictionary:
 	var owned : Array[String] = []
@@ -431,11 +448,13 @@ func _bag_info() -> Dictionary:
 		"status": ( "STAGE %d  BOSS   KILLS %d" % [ stage + 1, kills ] ) if _is_boss_stage() else ( "STAGE %d  WAVE %d/%d   KILLS %d" % [ stage + 1, maxi( wave, 1 ), _wave_total(), kills ] ),
 		"rows": [
 			{ "region": Pickup.REGIONS[Pickup.Kind.APPLE], "name": "APPLE",
-				"value": "%d/%d" % [ loot.bag_apples, LootDropper.BAG_CAPACITY ], "note": "IN BAG - AUTO EAT" },
+				"value": "%d/%d" % [ loot.bag_apples, LootDropper.BAG_CAPACITY ], "note": "+1 HP",
+				"kind": Pickup.Kind.APPLE, "can_use": loot.can_use_item( Pickup.Kind.APPLE ) },
+			{ "region": Pickup.REGIONS[Pickup.Kind.POTION], "name": "POTION",
+				"value": "%d/%d" % [ loot.bag_potions, LootDropper.BAG_CAPACITY ], "note": "+2 HP, PSI MAX",
+				"kind": Pickup.Kind.POTION, "can_use": loot.can_use_item( Pickup.Kind.POTION ) },
 			{ "region": Pickup.REGIONS[Pickup.Kind.GEM], "name": "GEM",
 				"value": "x%d" % loot.picked[Pickup.Kind.GEM], "note": "PICKED - PSI +25%" },
-			{ "region": Pickup.REGIONS[Pickup.Kind.POTION], "name": "POTION",
-				"value": "x%d" % loot.picked[Pickup.Kind.POTION], "note": "PICKED - HP +2, PSI MAX" },
 		],
 	}
 
