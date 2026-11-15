@@ -124,7 +124,7 @@ func _spawn_pop() -> void:
 	audio.stream = BREAK_SOUND
 	audio.volume_db = -8.0
 	audio.pitch_scale = 1.6
-	audio.bus = &"Master"
+	audio.bus = &"SFX"
 	fx.add_child( audio )
 	audio.play()
 

@@ -77,7 +77,7 @@ func _begin_fire() -> void:
 	var audio := AudioStreamPlayer.new()
 	audio.stream = SOUND
 	audio.volume_db = -4.0
-	audio.bus = &"Master"
+	audio.bus = &"SFX"
 	add_child( audio )
 	audio.play()
 

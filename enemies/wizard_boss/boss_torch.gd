@@ -104,7 +104,7 @@ func play_absorb( target : Node2D ) -> void:
 	audio.stream = ABSORB_SOUND
 	audio.volume_db = -6.0
 	audio.pitch_scale = 1.3
-	audio.bus = &"Master"
+	audio.bus = &"SFX"
 	fx.add_child( audio )
 	audio.play()
 

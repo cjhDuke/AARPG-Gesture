@@ -62,7 +62,7 @@ func _setup( radius : float, damage : int, knockback : float ) -> void:
 
 	var player := AudioStreamPlayer.new()
 	player.stream = SOUND
-	player.bus = &"Master"
+	player.bus = &"SFX"
 	add_child( player )
 	player.play()
 

@@ -84,6 +84,7 @@ shape = SubResource("CircleShape2D_sj23e")
 debug_color = Color(0.90164346, 0.10766346, 0.36556005, 0.41960785)
 
 [node name="AudioStreamPlayer2D" type="AudioStreamPlayer2D" parent="." unique_id=1798304998]
+bus = &"SFX"
 stream = ExtResource("4_5u3cr")
 autoplay = true
 

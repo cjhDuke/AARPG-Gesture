@@ -100,7 +100,7 @@ func _explode() -> void:
 
 	var audio := AudioStreamPlayer.new()
 	audio.stream = SOUND
-	audio.bus = &"Master"
+	audio.bus = &"SFX"
 	add_child( audio )
 	audio.play()
 

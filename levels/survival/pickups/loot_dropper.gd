@@ -54,6 +54,18 @@ func bag_has_room() -> bool:
 	return bag_apples < BAG_CAPACITY
 
 
+func get_checkpoint_state() -> Dictionary:
+	return {"bag_apples": bag_apples, "picked": picked.duplicate(), "kills_since_apple": _kills_since_apple, "eat_timer": _eat_timer}
+
+
+func restore_checkpoint_state(data: Dictionary) -> void:
+	bag_apples = int(data["bag_apples"])
+	picked.assign(data["picked"])
+	_kills_since_apple = int(data["kills_since_apple"])
+	_eat_timer = float(data["eat_timer"])
+	bag_changed.emit(bag_apples, BAG_CAPACITY)
+
+
 ## 往背包里放一个苹果，满了返回 false
 func store_apple() -> bool:
 	if not bag_has_room():
@@ -107,6 +119,10 @@ func clear() -> void:
 	bag_apples = 0
 	picked = [ 0, 0, 0 ]
 	bag_changed.emit( bag_apples, BAG_CAPACITY )
+	clear_world_drops()
+
+
+func clear_world_drops() -> void:
 	if not is_inside_tree():
 		return
 	for n in get_tree().get_nodes_in_group( "loot_fx" ):

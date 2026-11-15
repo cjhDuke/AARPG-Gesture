@@ -33,10 +33,25 @@ const BOSS_BAR_POS := Vector2( 168, 27 )
 
 
 func _ready() -> void:
+	_build_settings_button()
 	banner_label.modulate.a = 0.0
 	result_panel.visible = false
 	retry_button.pressed.connect( retry_pressed.emit )
 	title_button.pressed.connect( title_pressed.emit )
+
+
+func _build_settings_button() -> void:
+	var button := Button.new()
+	button.name = "SettingsButton"
+	button.theme = preload("res://ui/settings/settings_theme.gd").make_theme()
+	button.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	button.icon = preload("res://ui/settings/assets/settings_icon.png")
+	button.expand_icon = true
+	button.tooltip_text = "Settings (Esc)"
+	button.position = Vector2(446, 6)
+	button.size = Vector2(28, 28)
+	button.pressed.connect(PauseMenu.show_pause_menu)
+	$Root.add_child(button)
 
 
 func _process( _delta : float ) -> void:
