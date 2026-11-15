@@ -5,6 +5,10 @@ export_presets.cfg
 build/
 bin/
 *.tmp
+.stage1_checks/
+server/.venv/
+server/.env
+server/*.sqlite*
 
 # 手势识别端
 __pycache__/

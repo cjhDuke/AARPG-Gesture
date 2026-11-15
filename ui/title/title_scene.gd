@@ -34,6 +34,9 @@ var _marker_placed: bool = false
 var _settings_open: bool = false
 var _saved_open: bool = false
 var _title_active: bool = true
+var _account_open: bool = false
+var _account_button: Button
+var _account_panel: CanvasLayer
 
 
 func _ready() -> void:
@@ -47,24 +50,13 @@ func _ready() -> void:
 	PauseMenu.process_mode = Node.PROCESS_MODE_DISABLED
 	PauseMenu.hidden.connect(_on_settings_closed)
 	SavedGames.closed.connect(_on_saved_games_closed)
+	AuthManager.session_changed.connect(_refresh_account_button)
 
 	title_ui.visible = false
 	menu.visible = false
 	marker.visible = false
 
-	# 练习模式（`-- --practice`）只在角落加一行小字，流程与正式模式相同
-	if LevelManager.practice_mode:
-		var tag := Label.new()
-		tag.name = "PracticeTag"
-		tag.text = "PRACTICE MODE"
-		tag.add_theme_font_size_override( "font_size", 12 )
-		tag.add_theme_color_override( "font_color", DungeonTheme.GOLD_BRIGHT )
-		tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		tag.set_anchors_preset( Control.PRESET_TOP_RIGHT )
-		tag.offset_left = -160.0
-		tag.offset_right = -18.0
-		tag.offset_top = 16.0
-		title_ui.add_child( tag )
+	_build_account_entry()
 
 	LevelManager.level_load_started.connect(exit_title_screen)
 
@@ -93,6 +85,9 @@ func setup_title_screen() -> void:
 		button.focus_neighbor_right = next_path
 		button.focus_entered.connect(play_audio.bind(button_focus_audio))
 		button.focus_entered.connect(_move_marker.bind(button))
+	if is_instance_valid(_account_button):
+		button_start.focus_neighbor_top = _account_button.get_path()
+		button_start.focus_neighbor_left = _account_button.get_path()
 
 	# 标题入场：字母逐个落下，每落一个响一声；全部落定后淡入副标题和回旋镖，按钮滑入
 	logo.letter_landed.connect(func(_i: int) -> void: play_audio(button_focus_audio))
@@ -126,7 +121,7 @@ func _show_menu() -> void:
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tw.tween_property(menu, "modulate:a", 1.0, MENU_SLIDE_TIME)
 	tw.chain().tween_callback(func() -> void:
-		if _title_active and not _starting and not _settings_open and not _saved_open:
+		if _title_active and not _starting and not _settings_open and not _saved_open and not _account_open:
 			button_start.grab_focus())
 
 
@@ -148,7 +143,7 @@ func _move_marker(button: Button) -> void:
 
 
 func start_game() -> void:
-	if _starting or _settings_open or _saved_open:
+	if _starting or _settings_open or _saved_open or _account_open:
 		return
 	_starting = true
 	play_audio(button_press_audio)
@@ -163,13 +158,13 @@ func start_game() -> void:
 
 
 func quit_game() -> void:
-	if _settings_open or _saved_open:
+	if _settings_open or _saved_open or _account_open:
 		return
 	get_tree().quit()
 
 
 func open_settings() -> void:
-	if _starting or _settings_open or _saved_open:
+	if _starting or _settings_open or _saved_open or _account_open:
 		return
 	PauseMenu.show_title_settings()
 	if not PauseMenu.is_paused:
@@ -181,7 +176,7 @@ func open_settings() -> void:
 
 
 func open_saved_games() -> void:
-	if _starting or _settings_open or _saved_open or not _title_active:
+	if _starting or _settings_open or _saved_open or _account_open or not _title_active:
 		return
 	if not SavedGames.open(true):
 		return
@@ -210,12 +205,65 @@ func _on_saved_games_closed() -> void:
 	button_saved.grab_focus()
 
 
+func _build_account_entry() -> void:
+	_account_button = Button.new()
+	_account_button.name = "AccountEntry"
+	_account_button.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_account_button.offset_left = -102.0
+	_account_button.offset_right = -16.0
+	_account_button.offset_top = 12.0
+	_account_button.offset_bottom = 38.0
+	_account_button.text = "GUEST"
+	_account_button.clip_text = true
+	_account_button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_account_button.pressed.connect(_open_account)
+	_account_button.focus_entered.connect(play_audio.bind(button_focus_audio))
+	title_ui.add_child(_account_button)
+	_account_button.focus_neighbor_bottom = button_start.get_path()
+	_account_button.focus_neighbor_left = button_start.get_path()
+	_account_panel = CanvasLayer.new()
+	_account_panel.set_script(load("res://ui/account/account_panel.gd"))
+	_account_panel.name = "AccountPanel"
+	add_child(_account_panel)
+	_account_panel.closed.connect(_on_account_closed)
+	_refresh_account_button()
+
+
+func _refresh_account_button() -> void:
+	if not is_instance_valid(_account_button):
+		return
+	_account_button.text = AuthManager.mask_email() if AuthManager.authenticated else "GUEST"
+
+
+func _open_account() -> void:
+	if _starting or _settings_open or _saved_open or _account_open or not _title_active:
+		return
+	_account_open = true
+	for button in [button_start, button_saved, button_settings, button_quit, _account_button]:
+		button.disabled = true
+	title_ui.process_mode = Node.PROCESS_MODE_DISABLED
+	_account_panel.open()
+
+
+func _on_account_closed() -> void:
+	if not _account_open or not _title_active:
+		return
+	_account_open = false
+	title_ui.process_mode = Node.PROCESS_MODE_INHERIT
+	for button in [button_start, button_saved, button_settings, button_quit, _account_button]:
+		button.disabled = false
+	_refresh_account_button()
+	_account_button.grab_focus()
+
+
 func exit_title_screen() -> void:
 	_title_active = false
 	PlayerManager.player.visible = true
 
 	PlayerHud.visible = true
 	PauseMenu.process_mode = Node.PROCESS_MODE_ALWAYS
+	if is_instance_valid(_account_panel):
+		_account_panel.queue_free()
 
 	self.queue_free()
 
