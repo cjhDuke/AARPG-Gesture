@@ -3,25 +3,25 @@ extends CanvasLayer
 ## 由 GestureInput 在 _ready 里实例化为子节点，所以标题、关卡、结算时都能看到。
 ## 不受 F1（隐藏摄像头面板）影响。
 
-const FONT_SIZE := 16
+const FONT_SIZE := 12
 const TOP_Y := 3.0
 const SCREEN_W := 480.0
-const PAD := Vector2(6, 1)
+const PAD := Vector2(6, 3)
 ## 张开状态弹出后停留多久再淡出（秒）
 const OPEN_HOLD := 1.0
 const OPEN_FADE := 0.35
 
-const COL_WARN := Color(1.0, 0.45, 0.4)
-const COL_SCAN := Color(1.0, 0.85, 0.4)
-const COL_FIST := Color(1.0, 0.65, 0.2)
-const COL_OPEN := Color(1, 1, 1)
-const COL_READY := Color(0.5, 1.0, 0.6)
+const COL_WARN := Color("#e2967a")
+const COL_SCAN := DungeonTheme.GOLD_BRIGHT
+const COL_FIST := DungeonTheme.PSI
+const COL_OPEN := DungeonTheme.TEXT
+const COL_READY := DungeonTheme.PSI
 ## 标定完成后 READY 提示停留多久（毫秒）
 const READY_HOLD_MSEC := 1500
 
 var _gi: Node
 var _root: Control
-var _bg: ColorRect
+var _bg: Panel
 var _label: Label
 var _text := ""
 var _tween: Tween
@@ -36,18 +36,23 @@ var _ready_until_msec := 0
 func _ready() -> void:
 	_gi = get_parent()
 	_root = Control.new()
+	_root.theme = DungeonTheme.THEME
 	_ignore(_root)
 	add_child(_root)
 
-	_bg = ColorRect.new()
-	_bg.color = Color(0, 0, 0, 0.6)
+	_bg = Panel.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = DungeonTheme.BACKGROUND
+	style.border_color = DungeonTheme.GOLD
+	style.set_border_width_all(1)
+	_bg.add_theme_stylebox_override("panel", style)
 	_ignore(_bg)
 	_root.add_child(_bg)
 
 	_label = Label.new()
 	_label.add_theme_font_size_override("font_size", FONT_SIZE)
 	_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
-	_label.add_theme_constant_override("outline_size", 3)
+	_label.add_theme_constant_override("outline_size", 0)
 	_label.position = PAD
 	_ignore(_label)
 	_root.add_child(_label)

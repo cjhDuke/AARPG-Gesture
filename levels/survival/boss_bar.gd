@@ -6,10 +6,10 @@ const SEGMENTS : int = 3
 const SEG_W : float = 56.0
 const SEG_H : float = 7.0
 const GAP : float = 6.0
-const COL_BACK := Color( 0.05, 0.02, 0.08, 0.85 )
-const COL_FULL := Color( 0.85, 0.25, 0.9 )
-const COL_HURT := Color( 1.0, 0.85, 1.0 )
-const COL_EDGE := Color( 0.9, 0.7, 1.0, 0.9 )
+const COL_BACK := DungeonTheme.BACKGROUND
+const COL_FULL := Color( "#b568a3" )
+const COL_HURT := DungeonTheme.TEXT
+const COL_EDGE := DungeonTheme.GOLD
 
 var round_idx : int = 0
 var seg_hp : int = 10
@@ -20,6 +20,7 @@ var _name : Label
 
 
 func _ready() -> void:
+	theme = DungeonTheme.THEME
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_name = Label.new()
 	_name.text = "WIZARD"
@@ -47,6 +48,9 @@ func _process( delta : float ) -> void:
 
 
 func _draw() -> void:
+	# The compact rail uses a thin copper frame; the three phase fills stay distinct.
+	draw_rect( Rect2( -39, -5, 221, 17 ), DungeonTheme.BACKGROUND )
+	draw_rect( Rect2( -39, -5, 221, 17 ), DungeonTheme.GOLD, false, 1.0 )
 	for slot in SEGMENTS:
 		# 从左到右的第 slot 格对应第 (SEGMENTS - 1 - slot) 轮
 		var r := SEGMENTS - 1 - slot

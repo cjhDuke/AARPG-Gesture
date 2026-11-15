@@ -1,5 +1,5 @@
 class_name TitleLogo extends Control
-## 像素大字标题：每个字母是独立的一组 Label（红色硬边投影垫在下面、米白字 + 深色描边在上面）。
+## 像素大字标题：每个字母是独立的一组 Label（铜棕硬边投影垫在下面、米白字 + 深色描边在上面）。
 ## 入场：字母逐个从上方落下并回弹，每落一个发一次 letter_landed；
 ## 全部落定后整体缓慢上下浮动（约 ±2 像素，周期 2 秒）并发出 intro_finished。
 ## 本节点处于暂停的场景树里，所以要挂在 ALWAYS 的父节点下（CanvasLayer 已是）。
@@ -8,16 +8,16 @@ signal letter_landed( index: int )
 signal intro_finished
 
 @export var text: String = "PSI HAND"
-## 字体基准是 16，用整数倍保持像素对齐
-@export var font_size: int = 64
+## 装饰标题使用 DungeonFont，正文由共享主题提供。
+@export var font_size: int = 48
 ## 字母静止时的顶边 y
 @export var rest_y: float = 30.0
 @export var letter_gap: float = 2.0
-@export var shadow_offset: Vector2 = Vector2( 4, 4 )
-@export var face_color: Color = Color( 0.96, 0.92, 0.80 )
-@export var outline_color: Color = Color( 0.10, 0.07, 0.12 )
-@export var shadow_color: Color = Color( 0.72, 0.26, 0.25 )
-@export var outline_size: int = 4
+@export var shadow_offset: Vector2 = Vector2( 2, 3 )
+@export var face_color: Color = DungeonTheme.GOLD_BRIGHT
+@export var outline_color: Color = DungeonTheme.BACKGROUND
+@export var shadow_color: Color = DungeonTheme.GOLD
+@export var outline_size: int = 1
 
 const DROP_FROM_Y := -90.0
 const DROP_TIME := 0.6
@@ -59,7 +59,7 @@ func _unhandled_input( event: InputEvent ) -> void:
 
 ## 标题总宽度（屏幕像素），给外部对齐其他元素用
 func get_text_width() -> float:
-	var font := get_theme_default_font()
+	var font := DungeonTheme.TITLE_FONT
 	var total := 0.0
 	for ch in text:
 		total += _advance( font, ch ) + letter_gap
@@ -109,9 +109,10 @@ func _on_intro_done() -> void:
 
 
 func _build() -> void:
-	var font := get_theme_default_font()
-	var vw := get_viewport_rect().size.x
-	var x: float = roundf( ( vw - get_text_width() ) * 0.5 )
+	var font := DungeonTheme.TITLE_FONT
+	var vw := size.x
+	# 测量每个独立字母的实际步进，使硬边阴影也包含在居中范围内。
+	var x: float = roundf( ( vw - get_text_width() - shadow_offset.x ) * 0.5 )
 	for ch in text:
 		var adv := _advance( font, ch )
 		if ch != " ":
@@ -132,6 +133,7 @@ func _make_label( ch: String, color: Color, offset: Vector2 ) -> Label:
 	l.text = ch
 	l.position = offset
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	l.add_theme_font_override( "font", DungeonTheme.TITLE_FONT )
 	l.add_theme_font_size_override( "font_size", font_size )
 	l.add_theme_color_override( "font_color", color )
 	l.add_theme_color_override( "font_outline_color", outline_color )
@@ -141,5 +143,5 @@ func _make_label( ch: String, color: Color, offset: Vector2 ) -> Label:
 
 func _advance( font: Font, ch: String ) -> float:
 	if ch == " ":
-		return float( font_size ) * 0.4
-	return font.get_string_size( ch, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size ).x
+		return roundf( float( font_size ) * 0.4 )
+	return roundf( font.get_string_size( ch, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size ).x )
