@@ -127,7 +127,7 @@ func _build() -> void:
 	root.theme = SKIN.make_theme()
 	root.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	var dim := ColorRect.new()
-	dim.color = Color(0.025, 0.02, 0.02, 0.9)
+	dim.color = Color(DungeonTheme.BACKGROUND, 0.78)
 	root.add_child(dim)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	panel = Panel.new()
@@ -137,17 +137,17 @@ func _build() -> void:
 	panel.offset_right = 224
 	panel.offset_top = -124
 	panel.offset_bottom = 124
-	panel.add_theme_stylebox_override("panel", SKIN.frame(preload("res://ui/settings/assets/wood_frame.png"), 8))
-	var heading := _label("SAVED GAMES", 16)
-	heading.add_theme_color_override("font_color", SKIN.GOLD)
-	_place(heading, panel, Rect2(16, 9, 270, 22))
+	panel.add_theme_stylebox_override("panel", DungeonTheme.panel())
+	var heading := _label("SAVED GAMES", 24)
+	heading.add_theme_font_override("font", DungeonTheme.TITLE_FONT)
+	_place(heading, panel, Rect2(16, 7, 270, 28))
 	back = _button("BACK", close)
 	_place(back, panel, Rect2(356, 9, 76, 24))
 	var banner := _label("SELECT A CHECKPOINT TO MANAGE", 8)
 	banner.add_theme_color_override("font_color", SKIN.GOLD)
 	_place(banner, panel, Rect2(16, 34, 416, 13))
 	var left := Panel.new()
-	left.add_theme_stylebox_override("panel", SKIN.flat(Color("#291b17"), Color("#65452c")))
+	left.add_theme_stylebox_override("panel", SKIN.flat(DungeonTheme.BACKGROUND, DungeonTheme.GOLD))
 	_place(left, panel, Rect2(16, 50, 178, 144))
 	counter = _label("")
 	_place(counter, left, Rect2(7, 4, 162, 14))
@@ -160,7 +160,7 @@ func _build() -> void:
 	list.add_theme_constant_override("separation", 4)
 	scroll.add_child(list)
 	var right := Panel.new()
-	right.add_theme_stylebox_override("panel", SKIN.flat(Color("#291b17"), Color("#65452c")))
+	right.add_theme_stylebox_override("panel", SKIN.flat(DungeonTheme.BACKGROUND, DungeonTheme.GOLD))
 	_place(right, panel, Rect2(202, 50, 230, 144))
 	var detail_scroll := ScrollContainer.new()
 	detail_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -202,7 +202,7 @@ func _build_modal() -> void:
 	dialog.offset_right = 168
 	dialog.offset_top = -78
 	dialog.offset_bottom = 78
-	dialog.add_theme_stylebox_override("panel", SKIN.frame(preload("res://ui/settings/assets/wood_frame.png"), 8))
+	dialog.add_theme_stylebox_override("panel", DungeonTheme.panel())
 	modal_title = _label("", 14)
 	modal_title.add_theme_color_override("font_color", SKIN.GOLD)
 	_place(modal_title, dialog, Rect2(16, 12, 304, 20))
@@ -294,7 +294,7 @@ func _select(id: String) -> void:
 	selected_id = id
 	for button in list.get_children():
 		var chosen: bool = button.get_meta("save_id", "") == id
-		button.add_theme_stylebox_override("normal", SKIN.flat(Color("#543b24") if chosen else Color("#241813"), SKIN.GOLD if chosen else Color("#65452c")))
+		button.add_theme_stylebox_override("normal", DungeonTheme.panel(chosen))
 	_clear(details)
 	var entry := _selected()
 	var valid := not entry.is_empty() and bool(entry.get("valid", false))

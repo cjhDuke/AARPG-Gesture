@@ -1,7 +1,7 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://levels/survival/survival_hud.gd" id="1_hud"]
-[ext_resource type="Texture2D" path="res://levels/survival/congratulations.png" id="2_trophy"]
+[ext_resource type="Texture2D" path="res://ui/theme/ui_icons.png" id="2_trophy"]
 [ext_resource type="AudioStream" path="res://levels/survival/congratulations.mp3" id="3_music"]
 
 [node name="SurvivalHud" type="CanvasLayer"]
@@ -25,11 +25,13 @@ anchors_preset = 12
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = -22.0
+offset_top = -19.0
+offset_bottom = -1.0
 grow_horizontal = 2
 grow_vertical = 0
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 4
+theme_override_constants/outline_size = 0
+theme_override_font_sizes/font_size = 10
 text = "WAVE 1/5  KILLS 0  BEST 0"
 horizontal_alignment = 1
 
@@ -67,15 +69,16 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0, 0, 0, 0.85)
+color = Color(0.129, 0.102, 0.125, 0.9)
 
 [node name="Trophy" type="Sprite2D" parent="Root/ResultPanel"]
 unique_name_in_owner = true
-position = Vector2(240, 58)
-scale = Vector2(0.28, 0.28)
+texture_filter = 1
+position = Vector2(240, 64)
+scale = Vector2(2, 2)
 texture = ExtResource("2_trophy")
-hframes = 4
-vframes = 2
+region_enabled = true
+region_rect = Rect2(192, 224, 32, 32)
 
 [node name="ResultTitle" type="Label" parent="Root/ResultPanel"]
 unique_name_in_owner = true
@@ -97,6 +100,7 @@ anchor_right = 1.0
 offset_top = 152.0
 offset_bottom = 175.0
 grow_horizontal = 2
+theme_override_font_sizes/font_size = 12
 text = "KILLS 0   BEST 0"
 horizontal_alignment = 1
 
@@ -117,12 +121,16 @@ alignment = 1
 unique_name_in_owner = true
 custom_minimum_size = Vector2(90, 26)
 layout_mode = 2
+focus_neighbor_left = NodePath("../TitleButton")
+focus_neighbor_right = NodePath("../TitleButton")
 text = "RETRY"
 
 [node name="TitleButton" type="Button" parent="Root/ResultPanel/Buttons"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(90, 26)
 layout_mode = 2
+focus_neighbor_left = NodePath("../RetryButton")
+focus_neighbor_right = NodePath("../RetryButton")
 text = "TITLE"
 
 [node name="CongratsMusic" type="AudioStreamPlayer" parent="."]

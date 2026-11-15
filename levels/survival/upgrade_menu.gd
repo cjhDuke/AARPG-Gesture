@@ -6,23 +6,19 @@ class_name UpgradeMenu extends CanvasLayer
 ## 选定后发 chosen( id )（此时已取消暂停），由关卡给对应强化升级；弹窗随后自己释放。
 ## process_mode 为 ALWAYS，用真实时间计时，不受暂停和 Engine.time_scale 影响。
 
-const FONT : Font = preload( "res://ui/fonts/abaddon_light.ttf" )
 const APPEAR_SOUND : AudioStream = preload( "res://levels/survival/upgrade_appear.wav" )
 const CHOOSE_SOUND : AudioStream = preload( "res://levels/survival/upgrade_choose.wav" )
 
-const CARD_SIZE := Vector2( 132, 140 )
+const CARD_SIZE := Vector2( 132, 158 )
 const CARD_GAP : float = 10.0
-const CARD_TOP : float = 66.0
-const SELECT_LIFT : float = 6.0
+const CARD_TOP : float = 62.0
+const SELECT_LIFT : float = 4.0
+const DESC_TOP : float = 104.0
+const DESC_HEIGHT : float = 46.0
 ## 打开后多久之内不接受确认（毫秒）
 const CONFIRM_LOCK_MS : int = 400
 
-const COL_DIM := Color( 0.0, 0.0, 0.0, 0.62 )
-const COL_TITLE := Color( 1.0, 0.9, 0.55 )
-const COL_CARD := Color( 0.08, 0.09, 0.1, 0.9 )
-const COL_CARD_SEL := Color( 0.16, 0.17, 0.2, 0.97 )
-const COL_BORDER := Color( 0.35, 0.37, 0.42 )
-const COL_BORDER_SEL := Color( 1.0, 0.85, 0.35 )
+const COL_DIM := Color( 0.129, 0.102, 0.125, 0.64 )
 
 signal chosen( id : String )
 
@@ -48,6 +44,7 @@ func _ready() -> void:
 	_opened_ms = Time.get_ticks_msec()
 
 	var dim := ColorRect.new()
+	dim.theme = DungeonTheme.THEME
 	dim.color = COL_DIM
 	dim.set_anchors_preset( Control.PRESET_FULL_RECT )
 	# 吞掉鼠标，免得点穿到下面（暂停期间下面本来也不响应）
@@ -55,20 +52,22 @@ func _ready() -> void:
 	add_child( dim )
 
 	var root := Control.new()
+	root.theme = DungeonTheme.THEME
+	root.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	root.set_anchors_preset( Control.PRESET_FULL_RECT )
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child( root )
 
-	var title := _make_label( "CHOOSE UPGRADE", 16, COL_TITLE )
+	var title := _make_label( "CHOOSE UPGRADE", 24, DungeonTheme.TEXT )
 	title.set_anchors_preset( Control.PRESET_TOP_WIDE )
-	title.offset_top = 28.0
-	title.offset_bottom = 52.0
+	title.offset_top = 26.0
+	title.offset_bottom = 54.0
 	root.add_child( title )
 
-	var hint := _make_label( "LEFT / RIGHT: SELECT   ENTER: CONFIRM   OR CLICK", 8, Color( 0.75, 0.8, 0.85 ) )
-	hint.set_anchors_preset( Control.PRESET_BOTTOM_WIDE )
-	hint.offset_top = -40.0
-	hint.offset_bottom = -26.0
+	var hint := _make_label( "ARROWS / A D: SELECT   ENTER / CLICK: CONFIRM", 10, DungeonTheme.TEXT )
+	hint.set_anchors_preset( Control.PRESET_TOP_WIDE )
+	hint.offset_top = 232.0
+	hint.offset_bottom = 248.0
 	root.add_child( hint )
 
 	var n := _ids.size()
@@ -171,15 +170,17 @@ func _play( sound : AudioStream ) -> void:
 
 func _make_label( text : String, font_size : int, color : Color ) -> Label:
 	var label := Label.new()
+	label.theme = DungeonTheme.THEME
 	label.text = text
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.add_theme_font_override( "font", DungeonTheme.BODY_FONT )
 	label.add_theme_font_size_override( "font_size", font_size )
 	label.add_theme_color_override( "font_color", color )
 	return label
 
 
-## 一张强化卡片：图标、名称、等级变化、下一级效果。全部用 _draw 画
+## 一张强化卡片：面板与纹理用 _draw，正文由 Label 自动换行。
 class Card extends Control:
 	var upgrade_id : String = ""
 	var from_level : int = 0
@@ -188,30 +189,39 @@ class Card extends Control:
 	func setup( id : String, lv : int ) -> void:
 		upgrade_id = id
 		from_level = lv
+		theme = DungeonTheme.THEME
 		mouse_filter = Control.MOUSE_FILTER_STOP
+		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+
+	func _ready() -> void:
+		_add_text( Upgrades.display_name( upgrade_id ), 66.0, 20.0, 14, DungeonTheme.TEXT )
+		var lv_text := "NEW" if from_level == 0 else "LV %d > %d" % [ from_level, from_level + 1 ]
+		_add_text( lv_text, 88.0, 16.0, 12, DungeonTheme.PSI )
+		_add_text( Upgrades.level_desc( upgrade_id, from_level + 1 ), DESC_TOP, DESC_HEIGHT, 12, DungeonTheme.TEXT )
+
+	func _add_text( text : String, top : float, height : float, font_size : int, color : Color ) -> void:
+		var label := Label.new()
+		label.theme = DungeonTheme.THEME
+		# 先启用换行并锁住卡片内宽，再写 text；否则未换行的整句最小宽度会撑大 Label。
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var text_size := Vector2( CARD_SIZE.x - 20.0, height )
+		label.custom_minimum_size = text_size
+		label.size = text_size
+		label.position = Vector2( 10, top )
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		label.add_theme_font_override( "font", DungeonTheme.BODY_FONT )
+		label.add_theme_font_size_override( "font_size", font_size )
+		label.add_theme_constant_override( "line_spacing", 0 )
+		label.add_theme_color_override( "font_color", color )
+		label.text = text
+		add_child( label )
 
 	func set_selected( on : bool ) -> void:
 		selected = on
-		# 没选中的卡片稍微压暗，高亮的那张更突出
-		modulate = Color.WHITE if on else Color( 0.78, 0.78, 0.82 )
 		queue_redraw()
 
 	func _draw() -> void:
-		var w := size.x
-		var rect := Rect2( Vector2.ZERO, size )
-		draw_rect( rect, COL_CARD_SEL if selected else COL_CARD )
-		if selected:
-			# 外圈柔光 + 金色粗边
-			draw_rect( rect.grow( 2.0 ), Color( 1.0, 0.85, 0.35, 0.3 ), false, 2.0 )
-			draw_rect( rect, COL_BORDER_SEL, false, 2.0 )
-		else:
-			draw_rect( rect, COL_BORDER, false, 1.0 )
-		var def := Upgrades.get_def( upgrade_id )
-		Upgrades.draw_icon( self, upgrade_id, Vector2( w * 0.5, 36.0 ), 32.0 )
-		draw_string( FONT, Vector2( 0, 72 ), String( def.get( "name", upgrade_id ) ), HORIZONTAL_ALIGNMENT_CENTER, w, 12, Color( 1.0, 0.95, 0.7 ) )
-		var lv_text := "NEW" if from_level == 0 else "LV %d > %d" % [ from_level, from_level + 1 ]
-		var lv_col := Color( 0.4, 0.9, 1.0 ) if from_level == 0 else Color( 0.55, 1.0, 0.65 )
-		draw_string( FONT, Vector2( 0, 90 ), lv_text, HORIZONTAL_ALIGNMENT_CENTER, w, 12, lv_col )
-		# 下一级效果，最多 3 行，左右各留 8 像素
-		draw_multiline_string( FONT, Vector2( 8, 110 ), Upgrades.level_desc( upgrade_id, from_level + 1 ),
-			HORIZONTAL_ALIGNMENT_CENTER, w - 16.0, 8, 3, Color( 0.75, 0.9, 1.0 ) )
+		DungeonTheme.draw_panel( self, Rect2( Vector2.ZERO, size ), selected )
+		Upgrades.draw_icon( self, upgrade_id, Vector2( size.x * 0.5, 36.0 ), 48.0 )

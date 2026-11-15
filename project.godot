@@ -43,6 +43,7 @@ window/stretch/mode="canvas_items"
 
 [gui]
 
+theme/custom="res://ui/theme/dungeon_theme.tres"
 theme/custom_font="uid://yuwy4uqsbdd1"
 
 [input]

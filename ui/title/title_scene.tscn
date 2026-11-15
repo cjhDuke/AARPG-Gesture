@@ -9,6 +9,9 @@
 [ext_resource type="Script" path="res://ui/title/title_logo.gd" id="10_logo"]
 [ext_resource type="Script" path="res://ui/title/title_boomerang.gd" id="11_boom"]
 
+[ext_resource type="Theme" path="res://ui/theme/dungeon_theme.tres" id="12_theme"]
+[ext_resource type="Script" path="res://ui/theme/title_frame.gd" id="13_frame"]
+
 [node name="title_scene" type="Node2D" unique_id=1179631819]
 script = ExtResource("1_0q24l")
 music = ExtResource("2_wgj1g")
@@ -30,6 +33,9 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
+theme = ExtResource("12_theme")
+texture_filter = 1
+
 [node name="Stage" type="Node2D" parent="CanvasLayer/Control"]
 script = ExtResource("9_stage")
 
@@ -41,7 +47,17 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0.04, 0.03, 0.08, 0.6)
+color = Color(0.1294, 0.102, 0.1255, 0.66)
+
+[node name="CopperFrame" type="Control" parent="CanvasLayer/Control"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("13_frame")
 
 [node name="Logo" type="Control" parent="CanvasLayer/Control"]
 layout_mode = 1
@@ -64,9 +80,9 @@ offset_top = 90.0
 offset_right = 120.0
 offset_bottom = 113.0
 grow_horizontal = 2
-theme_override_colors/font_color = Color(0.6, 0.95, 1, 1)
+theme_override_colors/font_color = Color(0.718, 0.659, 0.584, 1)
 theme_override_colors/font_outline_color = Color(0.1, 0.07, 0.12, 1)
-theme_override_constants/outline_size = 4
+theme_override_constants/outline_size = 1
 text = "GESTURE SURVIVAL"
 horizontal_alignment = 1
 
@@ -75,7 +91,7 @@ visible = false
 script = ExtResource("11_boom")
 orbit = true
 center = Vector2(240, 66)
-radius = Vector2(176, 48)
+radius = Vector2(158, 44)
 
 [node name="Menu" type="VBoxContainer" parent="CanvasLayer/Control"]
 modulate = Color(1, 1, 1, 0)
@@ -83,35 +99,31 @@ layout_mode = 1
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -72.0
-offset_top = 118.0
-offset_right = 72.0
-offset_bottom = 215.0
+offset_left = -80.0
+offset_top = 112.0
+offset_right = 80.0
+offset_bottom = 225.0
 grow_horizontal = 2
 theme_override_constants/separation = 3
 
 [node name="Button_start" type="Button" parent="CanvasLayer/Control/Menu"]
-custom_minimum_size = Vector2(0, 22)
+custom_minimum_size = Vector2(0, 26)
 layout_mode = 2
-theme_override_font_sizes/font_size = 12
 text = "START"
 
 [node name="Button_saved" type="Button" parent="CanvasLayer/Control/Menu"]
-custom_minimum_size = Vector2(0, 22)
+custom_minimum_size = Vector2(0, 26)
 layout_mode = 2
-theme_override_font_sizes/font_size = 12
 text = "SAVED GAMES"
 
 [node name="Button_settings" type="Button" parent="CanvasLayer/Control/Menu"]
-custom_minimum_size = Vector2(0, 22)
+custom_minimum_size = Vector2(0, 26)
 layout_mode = 2
-theme_override_font_sizes/font_size = 12
 text = "SETTINGS"
 
 [node name="Button_quit" type="Button" parent="CanvasLayer/Control/Menu"]
-custom_minimum_size = Vector2(0, 22)
+custom_minimum_size = Vector2(0, 26)
 layout_mode = 2
-theme_override_font_sizes/font_size = 12
 text = "QUIT"
 
 [node name="Marker" type="Node2D" parent="CanvasLayer/Control/Menu"]
@@ -126,16 +138,17 @@ anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
 offset_left = -240.0
-offset_top = -43.0
+offset_top = -39.0
 offset_right = 240.0
-offset_bottom = -26.0
+offset_bottom = -27.0
 grow_horizontal = 2
 grow_vertical = 0
+theme_override_font_sizes/font_size = 10
 text = "ARROWS: SELECT   ENTER: CONFIRM"
 horizontal_alignment = 1
 
 [node name="HintLabel2" type="Label" parent="CanvasLayer/Control"]
-modulate = Color(1, 1, 1, 0.5)
+modulate = Color(1, 1, 1, 1)
 layout_mode = 1
 anchors_preset = 7
 anchor_left = 0.5
@@ -143,11 +156,13 @@ anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
 offset_left = -240.0
-offset_top = -26.0
+offset_top = -24.0
 offset_right = 240.0
-offset_bottom = -4.0
+offset_bottom = -12.0
 grow_horizontal = 2
 grow_vertical = 0
+theme_override_colors/font_color = Color(0.718, 0.659, 0.584, 1)
+theme_override_font_sizes/font_size = 8
 text = "IN GAME  OPEN: MOVE  FIST: BOOMERANG  F3 RESCAN  F4 BOX"
 horizontal_alignment = 1
 

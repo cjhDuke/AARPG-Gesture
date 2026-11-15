@@ -1,17 +1,8 @@
 extends RefCounted
 ## Small, shared skin for the settings panel and its HUD entrance.
 
-const GOLD := Color("#d7ad56")
-const INK := Color("#f0dfb2")
-
-static func frame(texture: Texture2D, margin: int, tint := Color.WHITE) -> StyleBoxTexture:
-	var skin := StyleBoxTexture.new()
-	skin.texture = texture
-	for side in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
-		skin.set_texture_margin(side, margin)
-		skin.set_content_margin(side, 4)
-	skin.modulate_color = tint
-	return skin
+const GOLD := DungeonTheme.GOLD
+const INK := DungeonTheme.TEXT
 
 static func flat(color: Color, border: Color, width := 1) -> StyleBoxFlat:
 	var skin := StyleBoxFlat.new()
@@ -21,23 +12,18 @@ static func flat(color: Color, border: Color, width := 1) -> StyleBoxFlat:
 	return skin
 
 static func make_theme() -> Theme:
-	var theme := Theme.new()
-	theme.default_font = preload("res://ui/fonts/abaddon_light.ttf")
-	theme.default_font_size = 12
-	theme.set_color("font_color", "Label", INK)
-	var texture := preload("res://ui/settings/assets/button_frame.png")
+	var theme := DungeonTheme.THEME.duplicate() as Theme
+	theme.set_font_size("font_size", "Button", 12)
 	for state in ["normal", "hover", "pressed", "disabled"]:
-		var tint: Color = {"normal": Color("#bca584"), "hover": Color("#ffe1a2"),
-			"pressed": Color("#9e805b"), "disabled": Color("#665d53")}[state]
-		theme.set_stylebox(state, "Button", frame(texture, 6, tint))
-	theme.set_stylebox("focus", "Button", flat(Color.TRANSPARENT, GOLD))
-	theme.set_color("font_color", "Button", INK)
-	theme.set_color("font_hover_color", "Button", Color.WHITE)
-	theme.set_color("font_pressed_color", "Button", GOLD)
-	theme.set_color("font_focus_color", "Button", INK)
-	theme.set_color("font_disabled_color", "Button", Color("#827462"))
-	theme.set_stylebox("slider", "HSlider", flat(Color("#291b17"), Color("#6f7270")))
-	theme.set_stylebox("grabber_area", "HSlider", flat(Color("#65452c"), GOLD))
+		var style := theme.get_stylebox(state, "Button").duplicate() as StyleBox
+		style.set_content_margin(SIDE_LEFT, 6)
+		style.set_content_margin(SIDE_RIGHT, 6)
+		style.set_content_margin(SIDE_TOP, 4)
+		style.set_content_margin(SIDE_BOTTOM, 4)
+		theme.set_stylebox(state, "Button", style)
+	theme.set_stylebox("hover_pressed", "Button", theme.get_stylebox("pressed", "Button"))
+	theme.set_stylebox("slider", "HSlider", flat(DungeonTheme.BACKGROUND, DungeonTheme.MUTED))
+	theme.set_stylebox("grabber_area", "HSlider", flat(DungeonTheme.PANEL, GOLD))
 	theme.set_stylebox("grabber_area_highlight", "HSlider", flat(GOLD, INK))
 	var gradient := Gradient.new()
 	gradient.colors = PackedColorArray([GOLD, INK])

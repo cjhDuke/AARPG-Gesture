@@ -58,12 +58,12 @@ func _ready() -> void:
 		tag.name = "PracticeTag"
 		tag.text = "PRACTICE MODE"
 		tag.add_theme_font_size_override( "font_size", 12 )
-		tag.add_theme_color_override( "font_color", Color( 1.0, 0.8, 0.3 ) )
+		tag.add_theme_color_override( "font_color", DungeonTheme.GOLD_BRIGHT )
 		tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		tag.set_anchors_preset( Control.PRESET_TOP_RIGHT )
 		tag.offset_left = -160.0
-		tag.offset_right = -6.0
-		tag.offset_top = 4.0
+		tag.offset_right = -18.0
+		tag.offset_top = 16.0
 		title_ui.add_child( tag )
 
 	LevelManager.level_load_started.connect(exit_title_screen)

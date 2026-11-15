@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cpqse3we1pfww"
-path="res://.godot/imported/settings_icon.png-724882e33f8aeb2a47d2e060c0360c62.ctex"
+uid="uid://dh6p1nd3j6qsk"
+path="res://.godot/imported/parry.png-b1afa3f0af1fc39890cec8b448d80b6f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://ui/settings/assets/settings_icon.png"
-dest_files=["res://.godot/imported/settings_icon.png-724882e33f8aeb2a47d2e060c0360c62.ctex"]
+source_file="res://ui/skill_icons/parry.png"
+dest_files=["res://.godot/imported/parry.png-b1afa3f0af1fc39890cec8b448d80b6f.ctex"]
 
 [params]
 
