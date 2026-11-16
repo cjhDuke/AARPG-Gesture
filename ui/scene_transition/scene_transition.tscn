@@ -74,6 +74,7 @@ _data = {
 
 [node name="SceneTransition" type="CanvasLayer" unique_id=870155792]
 process_mode = 3
+layer = 40
 script = ExtResource("1_g0eyb")
 
 [node name="Control" type="Control" parent="." unique_id=1195084646]
@@ -83,6 +84,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
 
 [node name="ColorRect" type="ColorRect" parent="Control" unique_id=2137009087]
 layout_mode = 1
@@ -91,6 +93,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
 color = Color(0, 0, 0, 1)
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="Control" unique_id=662800135]

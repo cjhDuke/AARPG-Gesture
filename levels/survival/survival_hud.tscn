@@ -18,7 +18,16 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="StatusLabel" type="Label" parent="Root"]
+[node name="Gameplay" type="Control" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="StatusLabel" type="Label" parent="Root/Gameplay"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 12
@@ -35,7 +44,7 @@ theme_override_font_sizes/font_size = 10
 text = "WAVE 1/5  KILLS 0  BEST 0"
 horizontal_alignment = 1
 
-[node name="BannerLabel" type="Label" parent="Root"]
+[node name="BannerLabel" type="Label" parent="Root/Gameplay"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 14
@@ -52,7 +61,10 @@ theme_override_font_sizes/font_size = 32
 text = "WAVE 1"
 horizontal_alignment = 1
 
-[node name="ResultPanel" type="Control" parent="Root"]
+[node name="ResultLayer" type="CanvasLayer" parent="."]
+layer = 12
+
+[node name="ResultPanel" type="Control" parent="ResultLayer"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 1
@@ -62,7 +74,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="Dim" type="ColorRect" parent="Root/ResultPanel"]
+[node name="Dim" type="ColorRect" parent="ResultLayer/ResultPanel"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -71,7 +83,7 @@ grow_horizontal = 2
 grow_vertical = 2
 color = Color(0.129, 0.102, 0.125, 0.9)
 
-[node name="Trophy" type="Sprite2D" parent="Root/ResultPanel"]
+[node name="Trophy" type="Sprite2D" parent="ResultLayer/ResultPanel"]
 unique_name_in_owner = true
 texture_filter = 1
 position = Vector2(240, 64)
@@ -80,7 +92,7 @@ texture = ExtResource("2_trophy")
 region_enabled = true
 region_rect = Rect2(192, 224, 32, 32)
 
-[node name="ResultTitle" type="Label" parent="Root/ResultPanel"]
+[node name="ResultTitle" type="Label" parent="ResultLayer/ResultPanel"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 10
@@ -92,7 +104,7 @@ theme_override_font_sizes/font_size = 32
 text = "VICTORY"
 horizontal_alignment = 1
 
-[node name="ResultStats" type="Label" parent="Root/ResultPanel"]
+[node name="ResultStats" type="Label" parent="ResultLayer/ResultPanel"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 10
@@ -104,7 +116,7 @@ theme_override_font_sizes/font_size = 12
 text = "KILLS 0   BEST 0"
 horizontal_alignment = 1
 
-[node name="Buttons" type="HBoxContainer" parent="Root/ResultPanel"]
+[node name="Buttons" type="HBoxContainer" parent="ResultLayer/ResultPanel"]
 layout_mode = 1
 anchors_preset = 5
 anchor_left = 0.5
@@ -117,7 +129,7 @@ grow_horizontal = 2
 theme_override_constants/separation = 12
 alignment = 1
 
-[node name="RetryButton" type="Button" parent="Root/ResultPanel/Buttons"]
+[node name="RetryButton" type="Button" parent="ResultLayer/ResultPanel/Buttons"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(90, 26)
 layout_mode = 2
@@ -125,7 +137,7 @@ focus_neighbor_left = NodePath("../TitleButton")
 focus_neighbor_right = NodePath("../TitleButton")
 text = "RETRY"
 
-[node name="TitleButton" type="Button" parent="Root/ResultPanel/Buttons"]
+[node name="TitleButton" type="Button" parent="ResultLayer/ResultPanel/Buttons"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(90, 26)
 layout_mode = 2

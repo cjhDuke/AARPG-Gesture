@@ -95,6 +95,7 @@ func _free_level() -> void:
 
 ## 开始（或重新开始）一局
 func _start_run() -> void:
+	PlayerHud.show()
 	_checkpoint = {}
 	_clear_death_fx()
 	_clear_rewards()
@@ -524,6 +525,7 @@ func _end_run( victory : bool ) -> void:
 	controller.enabled = false
 	# 结算期间不允许 Esc 打开暂停菜单
 	PauseMenu.process_mode = Node.PROCESS_MODE_DISABLED
+	PlayerHud.hide()
 	hud.show_result( victory, kills, RunStats.best_kills )
 
 

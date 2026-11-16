@@ -8,7 +8,13 @@ signal settled
 
 
 func _ready() -> void:
-	animation_player.animation_finished.connect( func( _anim: StringName ) -> void: settled.emit() )
+	animation_player.animation_finished.connect( _on_animation_finished )
+
+
+func _on_animation_finished( anim : StringName ) -> void:
+	if anim == &"fade_in":
+		$Control/ColorRect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	settled.emit()
 
 
 ## 立刻停掉淡入淡出并让画面完全显示（遮罩全透明）。重开 / 切关被打断后调用，防止停在黑屏。
@@ -16,15 +22,18 @@ func _ready() -> void:
 func reset() -> void:
 	animation_player.stop()
 	$Control/ColorRect.color = Color( 0, 0, 0, 0 )
+	$Control/ColorRect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	settled.emit()
 
 
 func fade_out() -> bool:
+	$Control/ColorRect.mouse_filter = Control.MOUSE_FILTER_STOP
 	animation_player.play("fade_out")
 	await settled
 	return true
 
 func fade_in() -> bool:
+	$Control/ColorRect.mouse_filter = Control.MOUSE_FILTER_STOP
 	animation_player.play("fade_in")
 	await settled
 	return true
