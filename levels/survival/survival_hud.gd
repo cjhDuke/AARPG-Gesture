@@ -7,6 +7,7 @@ signal item_used( kind : int )
 var bag_provider : Callable
 
 @onready var status_label : Label = %StatusLabel
+@onready var gameplay : Control = $Root/Gameplay
 @onready var banner_label : Label = %BannerLabel
 @onready var result_panel : Control = %ResultPanel
 @onready var result_title : Label = %ResultTitle
@@ -34,6 +35,7 @@ const BOSS_BAR_POS := Vector2( 168, 27 )
 
 func _ready() -> void:
 	$Root.theme = DungeonTheme.THEME
+	result_panel.theme = DungeonTheme.THEME
 	_build_save_notice()
 	_build_settings_button()
 	banner_label.add_theme_font_override( "font", DungeonTheme.TITLE_FONT )
@@ -41,11 +43,11 @@ func _ready() -> void:
 	# Slim framing leaves native pixels and level marks unobstructed.
 	_upgrade_frame = _make_frame( Rect2( 4, 216, 248, 33 ) )
 	_upgrade_frame.visible = false
-	$Root.add_child( _upgrade_frame )
-	$Root.move_child( _upgrade_frame, 0 )
+	gameplay.add_child( _upgrade_frame )
+	gameplay.move_child( _upgrade_frame, 0 )
 	var status_frame := _make_frame( Rect2( 0, 250, 480, 20 ) )
 	status_label.add_sibling( status_frame )
-	$Root.move_child( status_frame, status_label.get_index() )
+	gameplay.move_child( status_frame, status_label.get_index() )
 	var result_frame := Panel.new()
 	result_frame.position = Vector2( 90, 24 )
 	result_frame.size = Vector2( 300, 216 )
@@ -73,7 +75,7 @@ func _build_save_notice() -> void:
 	_save_notice_label.add_theme_constant_override( "outline_size", 3 )
 	_save_notice_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_save_notice_label.modulate.a = 0.0
-	$Root.add_child( _save_notice_label )
+	gameplay.add_child( _save_notice_label )
 
 
 ## 非模态存档提示；错误消息保留更长时间并可自动换行。
@@ -105,7 +107,7 @@ func _build_settings_button() -> void:
 	button.position = Vector2(450, 6)
 	button.size = Vector2(24, 28)
 	button.pressed.connect(PauseMenu.show_pause_menu)
-	$Root.add_child(button)
+	gameplay.add_child(button)
 
 
 func _make_frame( rect : Rect2 ) -> Panel:
@@ -134,8 +136,7 @@ func show_boss_bar() -> void:
 	if _boss_bar == null:
 		_boss_bar = BossBar.new()
 		_boss_bar.position = BOSS_BAR_POS
-		$Root.add_child( _boss_bar )
-		$Root.move_child( _boss_bar, result_panel.get_index() )
+		gameplay.add_child( _boss_bar )
 	_boss_bar.visible = true
 
 
@@ -159,19 +160,20 @@ func set_bag( count : int, capacity : int ) -> void:
 	if _item_buttons.is_empty():
 		for kind : int in [ Pickup.Kind.APPLE, Pickup.Kind.POTION ]:
 			var button := Button.new()
+			# 先设置紧凑样式再放图标，避免默认按钮边距提前撑高且不自动缩回。
+			button.add_theme_font_size_override( "font_size", 8 )
+			for state in [ "normal", "hover", "pressed", "hover_pressed", "disabled", "focus" ]:
+				button.add_theme_stylebox_override( state, StyleBoxEmpty.new() )
 			var tex := AtlasTexture.new()
 			tex.atlas = Pickup.ITEMS_TEXTURE
 			tex.region = Pickup.REGIONS[kind].grow( -8 )
 			button.icon = tex
-			button.add_theme_font_size_override( "font_size", 8 )
-			button.add_theme_stylebox_override( "normal", StyleBoxEmpty.new() )
-			button.add_theme_stylebox_override( "disabled", StyleBoxEmpty.new() )
-			button.position = Vector2( 354 + ( 46 if kind == Pickup.Kind.POTION else 0 ), 30 )
-			button.size = Vector2( 44, 16 )
+			button.position = Vector2( 356 + ( 46 if kind == Pickup.Kind.POTION else 0 ), 30 )
 			button.focus_mode = Control.FOCUS_NONE
 			button.tooltip_text = "Apple (Q): +1 HP" if kind == Pickup.Kind.APPLE else "Potion (E): +2 HP, PSI MAX"
 			button.pressed.connect( item_used.emit.bind( kind ) )
-			$Root.add_child( button )
+			gameplay.add_child( button )
+			button.size = Vector2( 42, 16 )
 			_item_buttons[kind] = button
 	var potions : int = int( bag_provider.call() ) if bag_provider.is_valid() else 0
 	_item_buttons[Pickup.Kind.APPLE].text = "Q %d/%d" % [ count, capacity ]
@@ -191,8 +193,7 @@ func set_upgrades( levels : Dictionary ) -> void:
 	for id in levels:
 		var icon := Upgrades.Icon.new( id, UPGRADE_ICON, int( levels[id] ) )
 		icon.position = UPGRADE_POS + Vector2( UPGRADE_STEP * i, 0 )
-		$Root.add_child( icon )
-		$Root.move_child( icon, result_panel.get_index() )
+		gameplay.add_child( icon )
 		_upgrade_icons.append( icon )
 		i += 1
 
@@ -209,6 +210,8 @@ func show_banner( text : String ) -> void:
 
 ## 显示结算面板并暂停游戏；RETRY 获得焦点，回车确认（手势不参与菜单操作）
 func show_result( victory : bool, kills : int, best : int ) -> void:
+	# 战斗控件统一隐藏，避免运行时新增节点盖住结算或接收点击。
+	gameplay.hide()
 	result_title.text = "VICTORY" if victory else "GAME OVER"
 	result_title.add_theme_color_override( "font_color", DungeonTheme.GOLD_BRIGHT if victory else Color( "#d98775" ) )
 	result_stats.text = "KILLS %d   BEST %d" % [ kills, best ]
@@ -224,3 +227,4 @@ func show_result( victory : bool, kills : int, best : int ) -> void:
 func hide_result() -> void:
 	congrats_music.stop()
 	result_panel.visible = false
+	gameplay.show()
