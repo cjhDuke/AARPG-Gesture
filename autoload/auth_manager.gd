@@ -104,6 +104,21 @@ func display_name() -> String:
 	return username if not username.is_empty() else mask_email()
 
 
+func cloud_access_token() -> String:
+	return _access_token if authenticated and Time.get_unix_time_from_system() < _access_expires_at else ""
+
+
+func cloud_api_base() -> String:
+	return _api_base
+
+
+func refresh_for_cloud() -> bool:
+	if busy or _refresh_token.is_empty():
+		return false
+	_begin_refresh("", {}, _remember)
+	return true
+
+
 func login(target_email: String, password: String, remember: bool) -> void:
 	_start_request("login", "/auth/login", {"email": target_email.strip_edges(), "password": password}, remember)
 

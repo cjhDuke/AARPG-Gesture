@@ -1,5 +1,7 @@
 extends Node
 
+signal save_changed(id: String, operation: String)
+
 const SAVE_PATH := "user://checkpoint.json"
 const SAVE_DIR := "user://saves"
 const LEGACY_ID := "legacy_checkpoint"
@@ -11,24 +13,44 @@ const AUTOSAVE_NAME := "Autosave"
 
 var last_error: String = ""
 var autosave_error: String = ""
+var profile_id: String = ""
 var _pending: Dictionary = {}
 var _autosave_id := ""
+
+
+func set_profile(user_id: String) -> bool:
+	if LevelManager.practice_mode and not user_id.is_empty():
+		return _fail("Account profiles are disabled in practice mode.")
+	var scene := get_tree().current_scene
+	if scene != null and scene.scene_file_path != "res://ui/title/title_scene.tscn":
+		return _fail("Account save profile can only change at the title screen.")
+	if not user_id.is_empty() and not _canonical_uuid(user_id):
+		return _fail("Invalid account ID.")
+	profile_id = user_id
+	_pending = {}
+	_autosave_id = ""
+	last_error = ""
+	return true
+
+
+func save_directory() -> String:
+	return SAVE_DIR if profile_id.is_empty() else "user://profiles".path_join(profile_id).path_join("saves")
 
 
 func list_saves() -> Array[Dictionary]:
 	last_error = ""
 	_migrate_legacy()
 	var result: Array[Dictionary] = []
-	var directory := DirAccess.open(SAVE_DIR)
+	var directory := DirAccess.open(save_directory())
 	if directory == null:
-		if DirAccess.dir_exists_absolute(SAVE_DIR):
+		if DirAccess.dir_exists_absolute(save_directory()):
 			_fail("Cannot read the save folder.")
 	else:
 		for filename in directory.get_files():
 			if filename.ends_with(".json") and _safe_id(filename.get_basename()):
 				var id := filename.get_basename()
 				result.append(_entry(id, _read_save(id)))
-	if FileAccess.file_exists(SAVE_PATH) and not FileAccess.file_exists(_path(LEGACY_ID)):
+	if profile_id.is_empty() and FileAccess.file_exists(SAVE_PATH) and not FileAccess.file_exists(_path(LEGACY_ID)):
 		if LevelManager.practice_mode:
 			var legacy := _read_file(SAVE_PATH)
 			if not legacy.has("error") and _integer(legacy.get("version"), 1, 1):
@@ -51,7 +73,7 @@ func create_save(checkpoint: Dictionary, name: String) -> String:
 	if not _can_write_checkpoint(checkpoint):
 		return ""
 	var id := Crypto.new().generate_random_bytes(16).hex_encode()
-	if id.is_empty() or FileAccess.file_exists(_path(id)):
+	if id.is_empty() or FileAccess.file_exists(_path(id)) or FileAccess.file_exists(_deleted_path(id)):
 		_fail("Cannot create a new save. Please try again.")
 		return ""
 	var now := Time.get_datetime_string_from_system(false, true)
@@ -110,7 +132,7 @@ func save_autosave(checkpoint: Dictionary) -> bool:
 	var now := Time.get_datetime_string_from_system(false, true)
 	if _autosave_id.is_empty():
 		_autosave_id = Crypto.new().generate_random_bytes(16).hex_encode()
-		if _autosave_id.is_empty() or FileAccess.file_exists(_path(_autosave_id)):
+		if _autosave_id.is_empty() or FileAccess.file_exists(_path(_autosave_id)) or FileAccess.file_exists(_deleted_path(_autosave_id)):
 			_autosave_id = ""
 			_fail("Cannot create autosave. Previous saves are safe.")
 			autosave_error = last_error
@@ -127,9 +149,9 @@ func save_autosave(checkpoint: Dictionary) -> bool:
 
 
 func _find_autosave_id() -> String:
-	var directory := DirAccess.open(SAVE_DIR)
+	var directory := DirAccess.open(save_directory())
 	if directory == null:
-		if DirAccess.dir_exists_absolute(SAVE_DIR):
+		if DirAccess.dir_exists_absolute(save_directory()):
 			_fail("Cannot read the save folder. Previous saves are safe.")
 		return ""
 	var result := ""
@@ -149,7 +171,7 @@ func delete_save(id: String) -> bool:
 	last_error = ""
 	if not _can_manage() or not _safe_id(id):
 		return false
-	if id == LEGACY_ID and FileAccess.file_exists(SAVE_PATH):
+	if profile_id.is_empty() and id == LEGACY_ID and FileAccess.file_exists(SAVE_PATH):
 		if FileAccess.file_exists(_path(id)):
 			_migrate_legacy()
 			if FileAccess.file_exists(SAVE_PATH):
@@ -157,17 +179,36 @@ func delete_save(id: String) -> bool:
 		else:
 			if DirAccess.remove_absolute(SAVE_PATH) != OK:
 				return _fail("Cannot delete the old save.")
+			save_changed.emit(id, "delete")
 			return true
 	if not FileAccess.file_exists(_path(id)):
 		return _fail("This save no longer exists.")
+	if not profile_id.is_empty():
+		var deleted_path := _deleted_path(id)
+		if FileAccess.file_exists(deleted_path):
+			return _fail("A deletion for this save is already pending.")
+		if DirAccess.make_dir_recursive_absolute(save_directory().path_join(".deleted")) != OK:
+			return _fail("Cannot create the pending deletion folder.")
+		if DirAccess.rename_absolute(_path(id), deleted_path) != OK:
+			return _fail("Cannot mark this save for deletion. The save is safe.")
+		if id == _autosave_id:
+			_autosave_id = ""
+		save_changed.emit(id, "delete")
+		return true
 	if DirAccess.remove_absolute(_path(id)) != OK:
 		return _fail("Cannot delete this save. Please retry.")
+	if id == _autosave_id:
+		_autosave_id = ""
+	save_changed.emit(id, "delete")
 	return true
 
 
-func _write_record(id: String, record: Dictionary) -> bool:
-	if DirAccess.make_dir_recursive_absolute(SAVE_DIR) != OK:
+func _write_record(id: String, record: Dictionary, emit_change: bool = true, expected_local_hash: String = "", check_expected: bool = false) -> bool:
+	var directory_path := save_directory()
+	if DirAccess.make_dir_recursive_absolute(directory_path) != OK:
 		return _fail("Cannot create the save folder.")
+	if check_expected and not _matches_expected_hash(id, expected_local_hash):
+		return _fail("This save changed before the cloud update could be applied.")
 	var temporary := _path(id) + ".tmp"
 	var file := FileAccess.open(temporary, FileAccess.WRITE)
 	if file == null:
@@ -179,10 +220,183 @@ func _write_record(id: String, record: Dictionary) -> bool:
 	if error != OK:
 		DirAccess.remove_absolute(temporary)
 		return _fail("Cannot write save. Previous save is safe.")
+	if check_expected and not _matches_expected_hash(id, expected_local_hash):
+		DirAccess.remove_absolute(temporary)
+		return _fail("This save changed before the cloud update could be applied.")
 	if DirAccess.rename_absolute(temporary, _path(id)) != OK:
 		DirAccess.remove_absolute(temporary)
 		return _fail("Cannot replace save. Previous save is safe.")
+	if emit_change:
+		save_changed.emit(id, "put")
 	return true
+
+
+func read_record(id: String) -> Dictionary:
+	return _read_save(id)
+
+
+func record_hash(id: String) -> String:
+	var record := _read_save(id)
+	if record.has("error"):
+		return ""
+	return JSON.stringify(record, "\t", true, true).sha256_text()
+
+
+func apply_cloud_record(id: String, record_json: String, expected_local_hash: String) -> bool:
+	last_error = ""
+	if LevelManager.practice_mode:
+		return _fail("Cloud save changes are disabled in practice mode.")
+	if not _safe_id(id):
+		return _fail("Invalid save selection.")
+	if record_json.to_utf8_buffer().size() > MAX_FILE_SIZE:
+		return _fail("Saved game is too large.")
+	var parser := JSON.new()
+	if parser.parse(record_json) != OK or not parser.data is Dictionary:
+		return _fail("Cloud save is damaged.")
+	var record: Dictionary = parser.data
+	if not _valid_record(id, record):
+		return _fail("Cloud save is damaged or incompatible.")
+	if not _write_record(id, record, false, expected_local_hash, true):
+		return false
+	var deleted_path := _deleted_path(id)
+	if FileAccess.file_exists(deleted_path) and DirAccess.remove_absolute(deleted_path) != OK:
+		return _fail("Cloud save was applied, but its deletion marker could not be cleared.")
+	return true
+
+
+func remove_cloud_record(id: String, expected_local_hash: String) -> bool:
+	last_error = ""
+	if LevelManager.practice_mode:
+		return _fail("Cloud save changes are disabled in practice mode.")
+	if not _safe_id(id):
+		return _fail("Invalid save selection.")
+	if not _matches_expected_hash(id, expected_local_hash):
+		return _fail("This save changed before the cloud deletion could be applied.")
+	if not FileAccess.file_exists(_path(id)):
+		return true
+	if DirAccess.remove_absolute(_path(id)) != OK:
+		return _fail("Cannot remove the cached cloud save.")
+	if id == _autosave_id:
+		_autosave_id = ""
+	return true
+
+
+func guest_records() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var directory := DirAccess.open(SAVE_DIR)
+	if directory != null:
+		for filename in directory.get_files():
+			if filename.ends_with(".json") and _safe_id(filename.get_basename()):
+				var record := _read_file(SAVE_DIR.path_join(filename))
+				if _valid_record(filename.get_basename(), record):
+					result.append(record)
+	if not FileAccess.file_exists(SAVE_DIR.path_join(LEGACY_ID + ".json")):
+		var legacy := _legacy_guest_record()
+		if not legacy.is_empty(): result.append(legacy)
+	return result
+
+
+func _legacy_guest_record() -> Dictionary:
+	var record := _read_file(SAVE_PATH)
+	if record.has("error") or not _integer(record.get("version"), 1, 1):
+		return {}
+	record["version"] = VERSION
+	record["id"] = LEGACY_ID
+	record["name"] = "Imported checkpoint"
+	record["created_at"] = record["saved_at"]
+	record["saved_unix"] = 0.0
+	return record
+
+
+func deleted_ids() -> Array[String]:
+	var result: Array[String] = []
+	if profile_id.is_empty():
+		return result
+	var directory := DirAccess.open(save_directory().path_join(".deleted"))
+	if directory == null:
+		return result
+	for filename in directory.get_files():
+		if filename.ends_with(".json") and _safe_id(filename.get_basename()):
+			result.append(filename.get_basename())
+	return result
+
+
+func read_deleted_record(id: String) -> Dictionary:
+	if profile_id.is_empty() or not _safe_id(id):
+		return {"error": "Invalid deleted save selection."}
+	var record := _read_file(_deleted_path(id))
+	if not _valid_record(id, record):
+		return {"error": "Deleted save backup is damaged or incompatible."}
+	return record
+
+
+func clear_deleted_marker(id: String) -> bool:
+	last_error = ""
+	if LevelManager.practice_mode:
+		return _fail("Cloud save changes are disabled in practice mode.")
+	if profile_id.is_empty() or not _safe_id(id):
+		return _fail("Invalid deleted save selection.")
+	var path := _deleted_path(id)
+	if not FileAccess.file_exists(path):
+		return true
+	if DirAccess.remove_absolute(path) != OK:
+		return _fail("Cannot clear the acknowledged deletion marker.")
+	return true
+
+
+func copy_guest_record(guest_id: String, new_id: String) -> bool:
+	last_error = ""
+	if LevelManager.practice_mode:
+		return _fail("Cloud save changes are disabled in practice mode.")
+	if profile_id.is_empty():
+		return _fail("Sign in before copying a guest save.")
+	if not _safe_id(guest_id) or not _safe_id(new_id) or FileAccess.file_exists(_path(new_id)) or FileAccess.file_exists(_deleted_path(new_id)):
+		return _fail("The destination save ID is invalid or already exists.")
+	var record := _read_file(SAVE_DIR.path_join(guest_id + ".json"))
+	if guest_id == LEGACY_ID and record.has("error"):
+		record = _legacy_guest_record()
+	if not _valid_record(guest_id, record):
+		return _fail("The guest save is damaged or unavailable.")
+	if record.get("save_kind", "manual") == "auto":
+		record["save_kind"] = "manual"
+		record["name"] = "Imported autosave"
+	return _write_copied_record(record, new_id, false)
+
+
+func copy_record(id: String, new_id: String) -> bool:
+	last_error = ""
+	if LevelManager.practice_mode:
+		return _fail("Cloud save changes are disabled in practice mode.")
+	if not _safe_id(id) or not _safe_id(new_id) or FileAccess.file_exists(_path(new_id)) or FileAccess.file_exists(_deleted_path(new_id)):
+		return _fail("The destination save ID is invalid or already exists.")
+	var record := _read_save(id)
+	if record.has("error"):
+		record = read_deleted_record(id)
+		if record.has("error"):
+			return _fail(record["error"])
+	return _write_copied_record(record, new_id, true)
+
+
+func _write_copied_record(source: Dictionary, new_id: String, conflict_name: bool) -> bool:
+	var record := source.duplicate(true)
+	var now := Time.get_datetime_string_from_system(false, true)
+	record["id"] = new_id
+	record["created_at"] = now
+	record["saved_at"] = now
+	record["saved_unix"] = Time.get_unix_time_from_system()
+	if conflict_name:
+		record["name"] = (str(record["name"]).left(16).strip_edges() + " Conflict").left(24)
+		if record.get("save_kind", "manual") == "auto":
+			record["save_kind"] = "manual"
+	return _write_record(new_id, record)
+
+
+func _matches_expected_hash(id: String, expected_hash: String) -> bool:
+	var path := _path(id)
+	if not FileAccess.file_exists(path):
+		return expected_hash.is_empty()
+	var actual_hash := record_hash(id)
+	return not actual_hash.is_empty() and actual_hash == expected_hash
 
 
 func load_game(id: String) -> bool:
@@ -233,21 +447,27 @@ func _read_save(id: String) -> Dictionary:
 	if not _safe_id(id):
 		return {"error": "Invalid save selection."}
 	var record := _read_file(_path(id))
-	if record.has("error"):
-		return record
-	if not _integer(record.get("version"), VERSION, VERSION):
-		return {"error": "Save version is incompatible."}
-	if record.get("id") != id or not record.get("name") is String:
-		return {"error": "Saved game is damaged."}
-	if record.get("save_kind", "manual") not in ["manual", "auto"]:
-		return {"error": "Save type is incompatible."}
-	if record["name"].is_empty() or record["name"].length() > 24 or not record.get("created_at") is String or record["created_at"].length() > 32 or not _number(record.get("saved_unix"), 0.0, 100000000000.0):
-		return {"error": "Save details are damaged."}
+	if not _valid_record(id, record):
+		return {"error": "Saved game is damaged or incompatible."}
 	return record
 
 
+func _valid_record(id: String, record: Dictionary) -> bool:
+	if not record.get("saved_at") is String or str(record.get("saved_at", "")).length() > 32 or not _valid_checkpoint(record.get("checkpoint")):
+		return false
+	if record.has("error") or not _integer(record.get("version"), VERSION, VERSION):
+		return false
+	if record.get("id") != id or not record.get("name") is String:
+		return false
+	if record.get("save_kind", "manual") not in ["manual", "auto"]:
+		return false
+	if record["name"].is_empty() or record["name"].length() > 24 or not record.get("created_at") is String or record["created_at"].length() > 32 or not _number(record.get("saved_unix"), 0.0, 100000000000.0):
+		return false
+	return true
+
+
 func _migrate_legacy() -> void:
-	if LevelManager.practice_mode or not FileAccess.file_exists(SAVE_PATH):
+	if not profile_id.is_empty() or LevelManager.practice_mode or not FileAccess.file_exists(SAVE_PATH):
 		return
 	if not FileAccess.file_exists(_path(LEGACY_ID)):
 		var record := _read_file(SAVE_PATH)
@@ -317,7 +537,18 @@ func _safe_id(id: String) -> bool:
 
 
 func _path(id: String) -> String:
-	return SAVE_DIR.path_join(id + ".json")
+	return save_directory().path_join(id + ".json")
+
+
+func _deleted_path(id: String) -> String:
+	return save_directory().path_join(".deleted").path_join(id + ".json")
+
+
+func _canonical_uuid(value: String) -> bool:
+	var regex := RegEx.new()
+	if regex.compile("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$") != OK:
+		return false
+	return regex.search(value) != null
 
 
 func _save_name(checkpoint: Dictionary, name: String) -> String:

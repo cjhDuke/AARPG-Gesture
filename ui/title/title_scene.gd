@@ -255,6 +255,8 @@ func _refresh_account_button() -> void:
 	if not is_instance_valid(_account_button):
 		return
 	_account_button.text = AuthManager.display_name() if AuthManager.authenticated else ("CHECKING..." if not AuthManager.startup_check_complete else "GUEST")
+	if not AuthManager.authenticated and CloudSaveManager.is_account_context():
+		_account_button.text = "OFFLINE"
 	_account_button.disabled = not _menu_ready or not AuthManager.startup_check_complete or _starting or _account_open or _settings_open or _saved_open
 
 
