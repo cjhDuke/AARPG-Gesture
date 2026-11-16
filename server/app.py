@@ -91,7 +91,7 @@ class LoginRequest(EmailBody):
 
 
 class VerifyRequest(EmailBody):
-    password: SecretStr = Field(min_length=12, max_length=128)
+    password: SecretStr = Field(min_length=8, max_length=128)
     challenge_id: str = Field(pattern=r"^[0-9a-f-]{36}$")
     code: str = Field(pattern=r"^[0-9]{6}$")
 
@@ -444,10 +444,17 @@ def create_app(settings: Settings, sender=None, clock=time.time):
     @app.exception_handler(RequestValidationError)
     async def validation_error(_request, exc):
         # Never echo input fields, especially passwords and verification codes.
-        if any("username" in error.get("loc", ()) for error in exc.errors()):
+        fields = {str(part) for item in exc.errors() for part in item.get("loc", ())}
+        if "password" in fields:
+            error = {"code": "invalid_password_length", "message": "Password must be 8-128 characters."}
+        elif "email" in fields:
+            error = {"code": "invalid_email", "message": "Enter a valid email address."}
+        elif "code" in fields or "challenge_id" in fields:
+            error = {"code": "invalid_code_input", "message": "Enter a valid verification code."}
+        elif "username" in fields:
             error = {"code": "invalid_username", "message": "Use a display name of 2-24 letters, numbers, spaces, underscores or hyphens."}
         else:
-            error = {"code": "invalid_input", "message": "Check your email and code. Passwords support uppercase, lowercase and numbers, and must be 12-128 characters."}
+            error = {"code": "invalid_input", "message": "Check the submitted fields and try again."}
         return JSONResponse({"error": error}, status_code=422)
 
     @app.middleware("http")

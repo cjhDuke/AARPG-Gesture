@@ -33,6 +33,12 @@ var _save_name: Button
 var _form_rows: Array[Control] = []
 var _close_button: Button
 var _fade_tween: Tween
+var _error_overlay: Control
+var _error_message: Label
+var _error_ok: Button
+var _error_return_focus: Control
+const PASSWORD_MIN_LENGTH := 8
+const PASSWORD_MAX_LENGTH := 128
 const FADE_IN_SECONDS := 0.28
 
 func _ready() -> void:
@@ -76,6 +82,7 @@ func close() -> void:
 		return
 	if _fade_tween:
 		_fade_tween.kill()
+	_dismiss_error(false)
 	_clear_sensitive()
 	visible = false
 	_root.modulate.a = 1.0
@@ -83,6 +90,11 @@ func close() -> void:
 
 func _input(event: InputEvent) -> void:
 	if not visible:
+		return
+	if _error_overlay.visible:
+		if event.is_action_pressed("ui_cancel") or event.is_action_pressed("pause") or event.is_action_pressed("ui_accept"):
+			_dismiss_error()
+			get_viewport().set_input_as_handled()
 		return
 	if event.is_action_pressed("ui_cancel") or event.is_action_pressed("pause"):
 		close()
@@ -210,6 +222,65 @@ func _build() -> void:
 	for node in _content.get_children():
 		if node is Control:
 			node.theme = DungeonTheme.THEME
+	_build_error_dialog()
+
+func _build_error_dialog() -> void:
+	_error_overlay = Control.new()
+	_error_overlay.name = "ErrorDialog"
+	_error_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_error_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_root.add_child(_error_overlay)
+	var shade := ColorRect.new()
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	shade.color = Color(0.03, 0.025, 0.035, 0.78)
+	_error_overlay.add_child(shade)
+	var card := PanelContainer.new()
+	card.theme = DungeonTheme.THEME
+	card.add_theme_stylebox_override("panel", DungeonTheme.panel(true))
+	card.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	card.position = Vector2(-164, -72)
+	card.size = Vector2(328, 144)
+	_error_overlay.add_child(card)
+	var margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 14)
+	card.add_child(margin)
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 10)
+	margin.add_child(content)
+	var heading := _label("CHECK YOUR DETAILS", 17, DungeonTheme.GOLD_BRIGHT)
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	content.add_child(heading)
+	_error_message = _label("", 12, DungeonTheme.TEXT)
+	_error_message.add_theme_font_override("font", _font)
+	_error_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_error_message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_error_message.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_error_message.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	content.add_child(_error_message)
+	_error_ok = _button("OK", _dismiss_error)
+	_error_ok.custom_minimum_size.y = 26
+	content.add_child(_error_ok)
+	for direction in ["top", "bottom", "left", "right"]:
+		_error_ok.set("focus_neighbor_" + direction, NodePath("."))
+	_error_ok.focus_next = NodePath(".")
+	_error_ok.focus_previous = NodePath(".")
+	_error_overlay.visible = false
+
+func _show_error(message: String, field: Control = null) -> void:
+	_status.text = message
+	_error_message.text = message
+	_error_return_focus = field if is_instance_valid(field) else get_viewport().gui_get_focus_owner()
+	_panel.process_mode = Node.PROCESS_MODE_DISABLED
+	_error_overlay.visible = true
+	_error_ok.grab_focus()
+
+func _dismiss_error(restore_focus: bool = true) -> void:
+	_error_overlay.visible = false
+	_panel.process_mode = Node.PROCESS_MODE_INHERIT
+	if restore_focus and is_instance_valid(_error_return_focus) and _error_return_focus.is_visible_in_tree():
+		_error_return_focus.grab_focus()
+	_error_return_focus = null
 
 func _label(value: String, size: int, color: Color) -> Label:
 	var label := Label.new()
@@ -283,7 +354,7 @@ func _cycle_mode() -> void:
 		_pending_code_email = ""
 		_pending_code_purpose = ""
 	_clear_sensitive()
-	_status.text = "Password: 12-128 characters; A-Z, a-z and 0-9 are all allowed."
+	_status.text = "Password: 8-128 characters; A-Z, a-z and 0-9 are all allowed."
 	_refresh()
 
 func _open_reset() -> void:
@@ -299,56 +370,61 @@ func _open_reset() -> void:
 	_refresh()
 
 func _request_code() -> void:
+	if AuthManager.busy or _error_overlay.visible:
+		return
 	var addr := _email.text.strip_edges().to_lower()
 	var purpose := "register" if _mode == "REGISTER" else "reset"
-	if addr.is_empty():
-		_status.text = "Enter your email address first."
+	if not _valid_email(addr):
+		_show_error("Enter a valid email address before requesting a code.", _email)
 		return
 	if _challenge_email != addr or _challenge_purpose != purpose:
 		_clear_challenge()
 	_pending_code_email = addr
 	_pending_code_purpose = purpose
-	AuthManager.send_code(addr, purpose)
 	_status.text = "Sending verification code…"
+	AuthManager.send_code(addr, purpose)
 
 func _submit_form() -> void:
-	if AuthManager.busy:
+	if AuthManager.busy or _error_overlay.visible:
 		return
 	var addr := _email.text.strip_edges().to_lower()
-	if _mode != "LOGIN" and (_password.text.length() < 12 or _password.text.length() > 128):
-		_status.text = "Use a password of 12-128 characters."
+	if not _valid_email(addr):
+		_show_error("Enter a valid email address.", _email)
+		return
+	if _mode != "LOGIN" and (_password.text.length() < PASSWORD_MIN_LENGTH or _password.text.length() > PASSWORD_MAX_LENGTH):
+		_show_error("Use 8-128 characters for your password. Uppercase, lowercase and numbers are allowed.", _password)
 		return
 	if _mode == "LOGIN":
 		if _password.text.is_empty():
-			_status.text = "Enter your password."
+			_show_error("Enter your password.", _password)
 			return
+		_status.text = "Working…"
 		AuthManager.login(addr, _password.text, _remember.button_pressed)
 	elif _mode == "REGISTER":
 		if not _valid_username(_username.text):
-			_status.text = "Display name must be 2-24 letters, numbers, spaces, _ or -."
+			_show_error("Display name must be 2-24 letters, numbers, spaces, _ or -.", _username)
 			return
 		if _password.text != _confirm.text:
-			_status.text = "Passwords do not match."
+			_show_error("Passwords do not match. Re-enter the confirmation password.", _confirm)
 			return
 		if not _valid_challenge(addr, "register"):
-			_status.text = "Request and enter a new registration code."
+			_show_error("Request a registration code for this email, then enter its 6 digits.", _code)
 			return
+		_status.text = "Working…"
 		AuthManager.register_account(addr, _password.text, _challenge_id, _code.text.strip_edges(), _remember.button_pressed, _username.text.strip_edges())
 	else:
-		if _password.text.is_empty():
-			_status.text = "Enter a new password."
-			return
 		if _password.text != _confirm.text:
-			_status.text = "Passwords do not match."
+			_show_error("Passwords do not match. Re-enter the confirmation password.", _confirm)
 			return
 		if not _valid_challenge(addr, "reset"):
-			_status.text = "Request and enter a password reset code."
+			_show_error("Request a password reset code for this email, then enter its 6 digits.", _code)
 			return
+		_status.text = "Working…"
 		AuthManager.reset_password(addr, _password.text, _challenge_id, _code.text.strip_edges())
-	_status.text = "Working…"
 
 func _valid_challenge(addr: String, purpose: String) -> bool:
-	return not _challenge_id.is_empty() and _challenge_email == addr and _challenge_purpose == purpose and not _code.text.strip_edges().is_empty()
+	var digits := _code.text.strip_edges()
+	return not _challenge_id.is_empty() and _challenge_email == addr and _challenge_purpose == purpose and digits.length() == 6 and digits.is_valid_int() and not digits.begins_with("-") and not digits.begins_with("+")
 
 func _on_request_finished(operation: String, ok: bool, message: String, data: Dictionary) -> void:
 	if not visible:
@@ -389,6 +465,19 @@ func _on_request_finished(operation: String, ok: bool, message: String, data: Di
 			_clear_challenge()
 			_mode = "LOGIN"
 	_refresh()
+	if not ok and operation in ["email_codes", "update_profile", "register", "login", "password_reset", "logout"]:
+		_show_error(_status.text if not _status.text.is_empty() else "Request failed. Please try again.", _error_field(operation, data))
+
+func _error_field(operation: String, data: Dictionary) -> Control:
+	var error_data: Variant = data.get("error", {})
+	var code := str(error_data.get("code", "")) if error_data is Dictionary else ""
+	if code == "invalid_email" or operation == "email_codes":
+		return _email
+	if code in ["invalid_code", "invalid_code_input"]:
+		return _code
+	if code == "invalid_username" or operation == "update_profile":
+		return _profile_name if AuthManager.authenticated else _username
+	return _password
 
 func _on_busy_changed(_busy: bool) -> void:
 	if visible:
@@ -437,11 +526,16 @@ func _valid_username(value: String) -> bool:
 	regex.compile("^[\\p{L}\\p{N}_ -]+$")
 	return regex.search(name) != null
 
+func _valid_email(value: String) -> bool:
+	var regex := RegEx.new()
+	regex.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
+	return regex.search(value) != null
+
 func _save_username() -> void:
 	if AuthManager.busy:
 		return
 	if not _valid_username(_profile_name.text):
-		_status.text = "Display name must be 2-24 letters, numbers, spaces, _ or -."
+		_show_error("Display name must be 2-24 letters, numbers, spaces, _ or -.", _profile_name)
 		return
 	_status.text = "Saving display name…"
 	AuthManager.update_username(_profile_name.text.strip_edges())

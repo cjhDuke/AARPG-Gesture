@@ -245,6 +245,11 @@ func _on_request_completed(result: int, response_code: int, _headers: PackedStri
 			_complete("logout", true, "Signed out.", {})
 			return
 		var failure_data: Dictionary = {}
+		var error_info: Variant = data.get("error", {})
+		if error_info is Dictionary:
+			var safe_code := str(error_info.get("code", ""))
+			if safe_code in ["invalid_password_length", "invalid_email", "invalid_code_input", "invalid_username", "invalid_code", "invalid_login", "invalid_input", "rate_limited"]:
+				failure_data["error"] = {"code": safe_code}
 		if response_code == 429:
 			var error_value: Variant = data.get("error", {})
 			if error_value is Dictionary:
@@ -368,8 +373,14 @@ func _safe_error(operation: String, data: Dictionary) -> String:
 		return "Too many attempts. Please wait and try again."
 	if code == "invalid_username":
 		return "Use 2-24 letters, numbers, spaces, underscores or hyphens for your display name."
+	if code == "invalid_password_length":
+		return "Use 8-128 characters for your password. Uppercase, lowercase and numbers are allowed."
+	if code == "invalid_email":
+		return "Enter a valid email address."
+	if code == "invalid_code_input":
+		return "Request a new verification code for this email and enter all 6 digits."
 	if code == "invalid_input":
-		return "Check your email and code. Passwords: 12-128 characters; A-Z, a-z and 0-9 are supported."
+		return "Check your email and code. Passwords: 8-128 characters; A-Z, a-z and 0-9 are supported."
 	if code == "invalid_code":
 		return "The code is incorrect or expired. Request a new one."
 	if code == "invalid_login":
