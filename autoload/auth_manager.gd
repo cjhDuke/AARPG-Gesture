@@ -20,6 +20,7 @@ var username: String = ""
 var user_id: String = ""
 var authenticated: bool = false
 var startup_check_complete: bool = false
+var startup_prompt_handled: bool = false
 var last_error: String = ""
 
 var _access_token := ""
@@ -234,7 +235,7 @@ func _on_request_completed(result: int, response_code: int, _headers: PackedStri
 			_after_refresh = ""
 			_after_refresh_data = {}
 			if resume_operation.is_empty():
-				_complete("restore", false, "Saved sign-in could not be verified. Check your connection and sign in.", {})
+				_complete("restore", false, "Saved sign-in could not be verified. You can play as a guest.", {})
 			else:
 				_complete(resume_operation, false, "Account service is unavailable. Please try again.", {})
 			return

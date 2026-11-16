@@ -31,8 +31,9 @@ var _profile_name: LineEdit
 var _profile_email: Label
 var _save_name: Button
 var _form_rows: Array[Control] = []
-var login_required: bool = false
 var _close_button: Button
+var _fade_tween: Tween
+const FADE_IN_SECONDS := 0.28
 
 func _ready() -> void:
 	layer = 30
@@ -49,8 +50,7 @@ func _ready() -> void:
 	_countdown_timer.timeout.connect(_tick_countdown)
 	add_child(_countdown_timer)
 
-func open(login_required: bool = false) -> void:
-	self.login_required = login_required
+func open() -> void:
 	if visible:
 		_refresh()
 		return
@@ -60,8 +60,12 @@ func open(login_required: bool = false) -> void:
 	if AuthManager.authenticated:
 		_profile_name.text = AuthManager.username
 	else:
-		_status.text = AuthManager.last_error if login_required and not AuthManager.last_error.is_empty() else ("Sign in to continue." if login_required else "")
+		_status.text = AuthManager.last_error if not AuthManager.last_error.is_empty() else "Sign in, or close this window to play as a guest."
 	_refresh()
+	_root.modulate.a = 0.0
+	_fade_tween = _root.create_tween()
+	_fade_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	_fade_tween.tween_property(_root, "modulate:a", 1.0, FADE_IN_SECONDS)
 	if AuthManager.authenticated:
 		_profile_name.grab_focus()
 	else:
@@ -70,21 +74,18 @@ func open(login_required: bool = false) -> void:
 func close() -> void:
 	if not visible:
 		return
-	if login_required and not AuthManager.authenticated:
-		_status.text = "Sign in to continue."
-		return
+	if _fade_tween:
+		_fade_tween.kill()
 	_clear_sensitive()
 	visible = false
+	_root.modulate.a = 1.0
 	closed.emit()
 
 func _input(event: InputEvent) -> void:
 	if not visible:
 		return
 	if event.is_action_pressed("ui_cancel") or event.is_action_pressed("pause"):
-		if login_required and not AuthManager.authenticated:
-			_status.text = "Sign in to continue."
-		else:
-			close()
+		close()
 		get_viewport().set_input_as_handled()
 
 func _unhandled_input(_event: InputEvent) -> void:
@@ -126,7 +127,8 @@ func _build() -> void:
 	var title := _label("ACCOUNT", 19, DungeonTheme.GOLD_BRIGHT)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title)
-	_close_button = _button("X", _close_or_quit)
+	_close_button = _button("X", close)
+	_close_button.custom_minimum_size = Vector2(28, 24)
 	header.add_child(_close_button)
 	_status = _label("", 10, DungeonTheme.MUTED)
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -233,8 +235,6 @@ func _button(value: String, action: Callable) -> Button:
 	return button
 
 func _refresh() -> void:
-	_close_button.text = "QUIT" if login_required and not AuthManager.authenticated else "X"
-	_close_button.custom_minimum_size = Vector2(60 if login_required and not AuthManager.authenticated else 28, 24)
 	var logged := AuthManager.authenticated
 	for row in _form_rows:
 		row.visible = not logged
@@ -393,12 +393,6 @@ func _on_request_finished(operation: String, ok: bool, message: String, data: Di
 func _on_busy_changed(_busy: bool) -> void:
 	if visible:
 		_refresh()
-
-func _close_or_quit() -> void:
-	if login_required and not AuthManager.authenticated:
-		get_tree().quit()
-	else:
-		close()
 
 func _on_session_changed() -> void:
 	if visible:
