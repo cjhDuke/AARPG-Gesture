@@ -20,7 +20,7 @@ _UPGRADES = {
     "pool": 3, "wide_spin": 3, "parry": 3, "heart": 3,
 }
 _STAGES = (("DUNGEON", "waves", 3), ("GRASSLAND", "waves", 3), ("WIZARD HALL", "boss", 1))
-_RECORD_KEYS = {"version", "id", "name", "created_at", "saved_at", "saved_unix", "checkpoint"}
+_RECORD_KEYS = {"version", "id", "name", "created_at", "saved_at", "saved_unix", "checkpoint", "save_kind"}
 _CHECKPOINT_KEYS = {"stage", "stage_name", "kind", "wave", "hp", "psi", "upgrades", "kills", "loot"}
 _LOOT_KEYS = {"bag_apples", "picked", "kills_since_apple", "eat_timer", "bag_potions"}
 
@@ -110,7 +110,9 @@ def canonical_save(record: object, save_id: str) -> tuple[str, str]:
     """Validate a v2 save and return its canonical JSON and UTF-8 SHA-256 hex digest."""
     if not isinstance(save_id, str) or not _ID_RE.fullmatch(save_id):
         _fail("save_id must be 32 lowercase hexadecimal characters")
-    data = _object(record, _RECORD_KEYS, "record")
+    data = _object(record, _RECORD_KEYS, "record", optional={"save_kind"})
+    if data.get("save_kind", "manual") not in ("manual", "auto"):
+        _fail("unsupported save kind")
     if _integer(data.get("version"), "version", 2, 2) != 2:
         _fail("unsupported save version")
     if data.get("id") != save_id:
@@ -124,6 +126,8 @@ def canonical_save(record: object, save_id: str) -> tuple[str, str]:
     checkpoint = _validate_checkpoint(data.get("checkpoint"))
     normalized = {"version": 2, "id": save_id, "name": name, "created_at": created_at,
                   "saved_at": saved_at, "saved_unix": saved_unix, "checkpoint": checkpoint}
+    if "save_kind" in data:
+        normalized["save_kind"] = data["save_kind"]
     try:
         def integral_numbers(value):
             if isinstance(value, dict):

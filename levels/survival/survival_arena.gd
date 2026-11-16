@@ -134,6 +134,7 @@ func _begin_wave() -> void:
 	hud.show_banner( "WAVE %d" % wave )
 	spawner.start_wave( _stage_data["waves"][wave - 1] )
 	_update_status()
+	_autosave_wave.call_deferred(_run_id)
 
 
 ## 切到第 n 关（只换数据、图块地图和音乐，不碰主角和背包）
@@ -171,6 +172,20 @@ func _begin_boss() -> void:
 	hud.show_boss_bar()
 	hud.set_boss_hp( 1, _boss.seg_hp, _boss.segment_hp )
 	_update_status()
+	_autosave_wave.call_deferred(_run_id)
+
+
+func _autosave_wave(run_id: int) -> void:
+	if LevelManager.practice_mode:
+		return
+	if LevelManager.is_loading_level:
+		await LevelManager.level_loaded
+	if not is_inside_tree() or get_tree().current_scene != self or run_id != _run_id or not can_save_checkpoint():
+		return
+	if SaveManager.save_autosave(get_checkpoint()):
+		hud.show_save_notice("AUTOSAVED")
+	else:
+		hud.show_save_notice("AUTOSAVE FAILED\n" + SaveManager.autosave_error, true)
 
 
 func can_save_checkpoint() -> bool:

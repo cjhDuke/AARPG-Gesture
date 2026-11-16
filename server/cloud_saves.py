@@ -172,6 +172,7 @@ class CloudSaves:
                 record = json.loads(record_json)
                 checkpoint = record["checkpoint"]
                 summary = {key: record[key] for key in ("name", "created_at", "saved_at", "saved_unix")}
+                summary["save_kind"] = record.get("save_kind", "manual")
                 summary["checkpoint"] = checkpoint
                 summary_json = encoded(summary)
             else:
