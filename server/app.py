@@ -16,6 +16,7 @@ import sqlite3
 import threading
 import time
 from typing import Literal
+import unicodedata
 import uuid
 
 from argon2 import PasswordHasher
@@ -95,6 +96,32 @@ class VerifyRequest(EmailBody):
     code: str = Field(pattern=r"^[0-9]{6}$")
 
 
+def clean_username(value: str):
+    value = unicodedata.normalize("NFC", value).strip()
+    if not 2 <= len(value) <= 24 or any(unicodedata.category(char)[0] not in ("L", "N") and char not in " _-" for char in value):
+        raise ValueError("Display name must be 2-24 letters, numbers, spaces, underscores or hyphens")
+    return value
+
+
+class RegisterRequest(VerifyRequest):
+    # Omission is accepted for the previous client; new clients supply a display name.
+    username: str = Field(default="", max_length=48)
+
+    @field_validator("username")
+    @classmethod
+    def display_name(cls, value):
+        return clean_username(value)
+
+
+class ProfileRequest(Body):
+    username: str = Field(max_length=48)
+
+    @field_validator("username")
+    @classmethod
+    def display_name(cls, value):
+        return clean_username(value)
+
+
 class RefreshRequest(Body):
     refresh_token: SecretStr = Field(min_length=40, max_length=128)
 
@@ -143,8 +170,14 @@ class AuthService:
         with self.connection() as db:
             db.execute("PRAGMA journal_mode=WAL")
             db.executescript(SCHEMA)
-            if db.execute("SELECT version FROM schema_version").fetchone()[0] != 1:
+            version = db.execute("SELECT version FROM schema_version").fetchone()[0]
+            if version not in (1, 2):
                 raise RuntimeError("Unsupported database schema")
+        if version == 1:
+            with self.transaction() as db:
+                db.execute("ALTER TABLE users ADD COLUMN username TEXT NOT NULL DEFAULT ''")
+                db.execute("UPDATE users SET username='Player_' || substr(replace(id,'-',''),1,8)")
+                db.execute("UPDATE schema_version SET version=2")
 
     @contextmanager
     def connection(self):
@@ -270,9 +303,10 @@ class AuthService:
             for old in active[9:]:
                 db.execute("DELETE FROM sessions WHERE id=?", (old["id"],))
             db.execute("INSERT INTO sessions VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), user["id"], self.digest(access), self.digest(refresh), now + ACCESS_SECONDS, refresh_expires))
-        return {"access_token": access, "refresh_token": refresh, "expires_in": ACCESS_SECONDS, "refresh_expires_at": refresh_expires, "user": {"id": user["id"], "email": user["email"]}}
+        profile = db.execute("SELECT id,email,username FROM users WHERE id=?", (user["id"],)).fetchone()
+        return {"access_token": access, "refresh_token": refresh, "expires_in": ACCESS_SECONDS, "refresh_expires_at": refresh_expires, "user": dict(profile)}
 
-    def register(self, body: VerifyRequest, ip: str):
+    def register(self, body: RegisterRequest, ip: str):
         self.auth_limit(body.email, ip, "verify")
         encoded = self.passwords.hash(body.password.get_secret_value())
         result = None
@@ -280,7 +314,8 @@ class AuthService:
             if self.consume_code(db, body, "register"):
                 if not db.execute("SELECT 1 FROM users WHERE email=?", (body.email,)).fetchone():
                     user = {"id": str(uuid.uuid4()), "email": body.email}
-                    db.execute("INSERT INTO users VALUES(?,?,?,?)", (user["id"], user["email"], encoded, self.now()))
+                    name = body.username or "Player_" + user["id"].replace("-", "")[:8]
+                    db.execute("INSERT INTO users(id,email,password_hash,created_at,username) VALUES(?,?,?,?,?)", (user["id"], user["email"], encoded, self.now(), name))
                     result = self.new_session(db, user)
         if result is None:
             raise ApiError(400, "invalid_code", "This code is invalid or expired. Please request a new code.")
@@ -329,15 +364,25 @@ class AuthService:
             user = db.execute("SELECT id,email FROM users WHERE id=?", (session["user_id"],)).fetchone()
             return self.new_session(db, user, session["id"], session["refresh_expires"])
 
-    def me(self, request: Request):
+    def authenticated_user(self, db, request: Request):
         authorization = request.headers.get("Authorization", "")
         if not authorization.startswith("Bearer ") or not 40 <= len(authorization[7:]) <= 128:
             raise ApiError(401, "session_expired", "Please log in again.")
-        with self.connection() as db:
-            user = db.execute("SELECT u.id,u.email FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.access_hash=? AND s.access_expires>? AND s.refresh_expires>?", (self.digest(authorization[7:]), self.now(), self.now())).fetchone()
+        user = db.execute("SELECT u.id,u.email,u.username FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.access_hash=? AND s.access_expires>? AND s.refresh_expires>?", (self.digest(authorization[7:]), self.now(), self.now())).fetchone()
         if not user:
             raise ApiError(401, "session_expired", "Please log in again.")
         return dict(user)
+
+    def me(self, request: Request):
+        with self.connection() as db:
+            return self.authenticated_user(db, request)
+
+    def update_profile(self, body: ProfileRequest, request: Request):
+        with self.transaction() as db:
+            user = self.authenticated_user(db, request)
+            self.rate_limit(db, "profile:user:" + user["id"], 60, 10)
+            db.execute("UPDATE users SET username=? WHERE id=?", (body.username, user["id"]))
+            return {**user, "username": body.username}
 
     def logout(self, body: RefreshRequest):
         with self.transaction() as db:
@@ -356,6 +401,7 @@ class AuthService:
             db.execute("DELETE FROM rate_limits WHERE window < ? AND bucket LIKE 'mail:ip:%'", (now // 3600 - 1,))
             db.execute("DELETE FROM rate_limits WHERE window < ? AND (bucket LIKE 'login:%' OR bucket LIKE 'verify:%')", (now // 900 - 1,))
             db.execute("DELETE FROM rate_limits WHERE window < ? AND bucket LIKE 'refresh:%'", (now // 60 - 1,))
+            db.execute("DELETE FROM rate_limits WHERE window < ? AND bucket LIKE 'profile:%'", (now // 60 - 1,))
 
 
 def create_app(settings: Settings, sender=None, clock=time.time):
@@ -396,9 +442,13 @@ def create_app(settings: Settings, sender=None, clock=time.time):
         return JSONResponse({"error": error}, status_code=exc.status, headers=headers)
 
     @app.exception_handler(RequestValidationError)
-    async def validation_error(_request, _exc):
+    async def validation_error(_request, exc):
         # Never echo input fields, especially passwords and verification codes.
-        return JSONResponse({"error": {"code": "invalid_input", "message": "Check your email, code and password (12-128 characters)."}}, status_code=422)
+        if any("username" in error.get("loc", ()) for error in exc.errors()):
+            error = {"code": "invalid_username", "message": "Use a display name of 2-24 letters, numbers, spaces, underscores or hyphens."}
+        else:
+            error = {"code": "invalid_input", "message": "Check your email and code. Passwords support uppercase, lowercase and numbers, and must be 12-128 characters."}
+        return JSONResponse({"error": error}, status_code=422)
 
     @app.middleware("http")
     async def boundaries(request, call_next):
@@ -425,7 +475,7 @@ def create_app(settings: Settings, sender=None, clock=time.time):
         return service.request_code(body, ip(request))
 
     @app.post("/api/v1/auth/register", status_code=201)
-    def register(body: VerifyRequest, request: Request):
+    def register(body: RegisterRequest, request: Request):
         return service.register(body, ip(request))
 
     @app.post("/api/v1/auth/login")
@@ -447,6 +497,10 @@ def create_app(settings: Settings, sender=None, clock=time.time):
     @app.get("/api/v1/me")
     def me(request: Request):
         return service.me(request)
+
+    @app.patch("/api/v1/me")
+    def update_profile(body: ProfileRequest, request: Request):
+        return service.update_profile(body, request)
 
     return app
 

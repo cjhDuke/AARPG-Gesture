@@ -16,6 +16,7 @@ const INVALID_ERROR := "The response was invalid. Please try again."
 
 var busy: bool = false
 var email: String = ""
+var username: String = ""
 var user_id: String = ""
 var authenticated: bool = false
 var last_error: String = ""
@@ -79,8 +80,22 @@ func send_code(target_email: String, purpose: String) -> void:
 	_start_request("email_codes", "/auth/email-codes", {"email": target_email.strip_edges(), "purpose": purpose}, false)
 
 
-func register_account(target_email: String, password: String, challenge_id: String, code: String, remember: bool) -> void:
-	_start_request("register", "/auth/register", {"email": target_email.strip_edges(), "password": password, "challenge_id": challenge_id, "code": code}, remember)
+func register_account(target_email: String, password: String, challenge_id: String, code: String, remember: bool, display_username: String = "") -> void:
+	var payload := {"email": target_email.strip_edges(), "password": password, "challenge_id": challenge_id, "code": code}
+	if not display_username.is_empty():
+		payload["username"] = display_username
+	_start_request("register", "/auth/register", payload, remember)
+
+
+func update_username(value: String) -> void:
+	if not authenticated:
+		_finish_immediate("update_profile", false, "Please sign in again.")
+		return
+	_start_request("update_profile", "/me", {"username": value}, _remember, true)
+
+
+func display_name() -> String:
+	return username if not username.is_empty() else mask_email()
 
 
 func login(target_email: String, password: String, remember: bool) -> void:
@@ -139,7 +154,7 @@ func _select_api_base() -> void:
 func _start_request(operation: String, path: String, payload: Dictionary, remember: bool, authorization: bool = false) -> void:
 	if busy:
 		return
-	if operation in ["email_codes", "register", "login", "password_reset", "logout"] and not _explicit_auth_allowed():
+	if operation in ["email_codes", "register", "login", "password_reset", "logout", "update_profile"] and not _explicit_auth_allowed():
 		_finish_immediate(operation, false, "Account actions are available from the title screen.")
 		return
 	if operation in ["register", "login"] and remember and OS.get_name() != "Windows":
@@ -170,6 +185,8 @@ func _send_http(operation: String, path: String, payload: Dictionary, authorizat
 	if authorization and not _access_token.is_empty():
 		headers.append("Authorization: Bearer " + _access_token)
 	var method := HTTPClient.METHOD_GET if path == "/me" else HTTPClient.METHOD_POST
+	if operation == "update_profile":
+		method = HTTPClient.METHOD_PATCH
 	var body := "" if method == HTTPClient.METHOD_GET else JSON.stringify(payload)
 	var err := _http.request(_api_base + path, headers, method, body)
 	if err != OK:
@@ -284,6 +301,14 @@ func _on_request_completed(result: int, response_code: int, _headers: PackedStri
 		_clear_session()
 		_clear_local_storage()
 		_complete(operation, true, "Signed out.", {})
+	elif operation == "update_profile":
+		var updated_name: Variant = data.get("username")
+		if data.get("id") != user_id or data.get("email") != email or not (updated_name is String) or str(updated_name).length() < 2 or str(updated_name).length() > 24:
+			_complete(operation, false, INVALID_ERROR, {})
+			return
+		username = updated_name
+		session_changed.emit()
+		_complete(operation, true, "Display name saved.", {"username": username})
 	elif operation == "me":
 		_complete(operation, true, "Account loaded.", data.get("user", {}))
 	else:
@@ -303,6 +328,9 @@ func _accept_session(data: Dictionary) -> bool:
 		return false
 	var identity: Variant = user.get("id")
 	var address: Variant = user.get("email")
+	var display_username: Variant = user.get("username", "")
+	if not (display_username is String) or str(display_username).length() > 24:
+		return false
 	if not (identity is String) or not (address is String) or not str(address).contains("@") or str(address).length() > 254:
 		return false
 	if RegEx.create_from_string("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").search(identity) == null:
@@ -317,6 +345,7 @@ func _accept_session(data: Dictionary) -> bool:
 	_refresh_expires_at = int(refresh_expires)
 	user_id = str(user.get("id", ""))
 	email = str(user.get("email", ""))
+	username = display_username
 	authenticated = true
 	_refresh_pending = false
 	_refresh_retry_at = 0
@@ -331,6 +360,16 @@ func _safe_error(operation: String, data: Dictionary) -> String:
 	var code := str(error_data.get("code", "")) if error_data is Dictionary else ""
 	if code == "rate_limited":
 		return "Too many attempts. Please wait and try again."
+	if code == "invalid_username":
+		return "Use 2-24 letters, numbers, spaces, underscores or hyphens for your display name."
+	if code == "invalid_input":
+		return "Check your email and code. Passwords: 12-128 characters; A-Z, a-z and 0-9 are supported."
+	if code == "invalid_code":
+		return "The code is incorrect or expired. Request a new one."
+	if code == "invalid_login":
+		return "Email or password is incorrect. Passwords are case-sensitive."
+	if operation == "update_profile":
+		return "Could not save your display name. Please try again."
 	if operation in ["login", "register"]:
 		return "Sign in failed. Check your details and try again."
 	if operation == "email_codes":
@@ -381,6 +420,7 @@ func _clear_session() -> void:
 	_refresh_pending = false
 	_refresh_retry_at = 0
 	email = ""
+	username = ""
 	user_id = ""
 	authenticated = false
 	_remember = false
