@@ -7,9 +7,12 @@ const LEGACY_ARCHIVE := "user://checkpoint.imported.json"
 const VERSION := 2
 const ARENA_PATH := "res://levels/survival/survival_arena.tscn"
 const MAX_FILE_SIZE := 65536
+const AUTOSAVE_NAME := "Autosave"
 
 var last_error: String = ""
+var autosave_error: String = ""
 var _pending: Dictionary = {}
+var _autosave_id := ""
 
 
 func list_saves() -> Array[Dictionary]:
@@ -71,6 +74,8 @@ func overwrite_save(id: String, checkpoint: Dictionary) -> bool:
 	var record := _read_save(id)
 	if record.has("error"):
 		return _fail(record["error"])
+	if record.get("save_kind", "manual") == "auto":
+		return _fail("Autosave is managed automatically. Use NEW to keep a manual copy.")
 	record["checkpoint"] = checkpoint
 	record["saved_at"] = Time.get_datetime_string_from_system(false, true)
 	record["saved_unix"] = Time.get_unix_time_from_system()
@@ -84,8 +89,60 @@ func rename_save(id: String, name: String) -> bool:
 	var record := _read_save(id)
 	if record.has("error"):
 		return _fail(record["error"])
+	if record.get("save_kind", "manual") == "auto":
+		return _fail("Autosave is managed automatically. Use NEW to keep a manual copy.")
 	record["name"] = _save_name(record["checkpoint"], name)
 	return _write_record(id, record)
+
+
+func save_autosave(checkpoint: Dictionary) -> bool:
+	last_error = ""
+	if not _can_write_checkpoint(checkpoint):
+		autosave_error = last_error
+		return false
+	var previous := _read_save(_autosave_id) if not _autosave_id.is_empty() else {}
+	if previous.has("error") or previous.get("save_kind", "manual") != "auto":
+		_autosave_id = _find_autosave_id()
+		if not last_error.is_empty():
+			autosave_error = last_error
+			return false
+		previous = _read_save(_autosave_id) if not _autosave_id.is_empty() else {}
+	var now := Time.get_datetime_string_from_system(false, true)
+	if _autosave_id.is_empty():
+		_autosave_id = Crypto.new().generate_random_bytes(16).hex_encode()
+		if _autosave_id.is_empty() or FileAccess.file_exists(_path(_autosave_id)):
+			_autosave_id = ""
+			_fail("Cannot create autosave. Previous saves are safe.")
+			autosave_error = last_error
+			return false
+	var record := {
+		"version": VERSION, "id": _autosave_id, "name": AUTOSAVE_NAME,
+		"created_at": previous.get("created_at", now), "saved_at": now,
+		"saved_unix": Time.get_unix_time_from_system(), "checkpoint": checkpoint,
+		"save_kind": "auto",
+	}
+	var success := _write_record(_autosave_id, record)
+	autosave_error = "" if success else last_error
+	return success
+
+
+func _find_autosave_id() -> String:
+	var directory := DirAccess.open(SAVE_DIR)
+	if directory == null:
+		if DirAccess.dir_exists_absolute(SAVE_DIR):
+			_fail("Cannot read the save folder. Previous saves are safe.")
+		return ""
+	var result := ""
+	var newest := -1.0
+	for filename in directory.get_files():
+		if not filename.ends_with(".json") or not _safe_id(filename.get_basename()):
+			continue
+		var id := filename.get_basename()
+		var record := _read_save(id)
+		if not record.has("error") and record.get("save_kind", "manual") == "auto" and float(record["saved_unix"]) > newest:
+			result = id
+			newest = float(record["saved_unix"])
+	return result
 
 
 func delete_save(id: String) -> bool:
@@ -182,6 +239,8 @@ func _read_save(id: String) -> Dictionary:
 		return {"error": "Save version is incompatible."}
 	if record.get("id") != id or not record.get("name") is String:
 		return {"error": "Saved game is damaged."}
+	if record.get("save_kind", "manual") not in ["manual", "auto"]:
+		return {"error": "Save type is incompatible."}
 	if record["name"].is_empty() or record["name"].length() > 24 or not record.get("created_at") is String or record["created_at"].length() > 32 or not _number(record.get("saved_unix"), 0.0, 100000000000.0):
 		return {"error": "Save details are damaged."}
 	return record
@@ -221,6 +280,7 @@ func _entry(id: String, record: Dictionary) -> Dictionary:
 	var max_hp := Player.BASE_MAX_HP + int(Upgrades.param("heart", int(levels.get("heart", 0)), "hp", 0))
 	return {
 		"id": id, "name": record["name"], "progress": _progress(data), "time": record["saved_at"],
+		"automatic": record.get("save_kind", "manual") == "auto",
 		"valid": true, "message": "", "order": record["saved_unix"],
 		"hp": "%d / %d" % [int(data["hp"]), max_hp], "psi": "%d%%" % roundi(float(data["psi"]) * 100.0),
 		"apples": int(data["loot"]["bag_apples"]), "kills": int(data["kills"]),

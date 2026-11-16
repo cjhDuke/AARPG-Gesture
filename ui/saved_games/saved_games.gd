@@ -250,6 +250,10 @@ func _entry_by_id(id: String) -> Dictionary:
 	return {}
 
 
+func _entry_name(entry: Dictionary) -> String:
+	return "Autosave" if bool(entry.get("automatic", false)) else str(entry.get("name", ""))
+
+
 func _refresh_entries() -> void:
 	entries.assign(SaveManager.list_saves())
 	if _entry_by_id(selected_id).is_empty():
@@ -273,7 +277,10 @@ func _refresh() -> void:
 		list.add_child(button)
 		button.tooltip_text = str(entry.get("name", ""))
 		button.set_meta("save_id", id)
-		var title := _label(str(entry.get("name", "")), 11, true)
+		var automatic := bool(entry.get("automatic", false))
+		var title := _label(("AUTO  " if automatic else "") + _entry_name(entry), 11, true)
+		if automatic:
+			title.add_theme_color_override("font_color", SKIN.GOLD)
 		title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		title.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 		title.offset_left = 8
@@ -298,9 +305,10 @@ func _select(id: String) -> void:
 	_clear(details)
 	var entry := _selected()
 	var valid := not entry.is_empty() and bool(entry.get("valid", false))
+	var automatic := not entry.is_empty() and bool(entry.get("automatic", false))
 	load_button.disabled = not valid or LevelManager.practice_mode
-	overwrite_button.disabled = not valid or not _can_save or LevelManager.practice_mode
-	rename_button.disabled = not valid or LevelManager.practice_mode
+	overwrite_button.disabled = not valid or automatic or not _can_save or LevelManager.practice_mode
+	rename_button.disabled = not valid or automatic or LevelManager.practice_mode
 	delete_button.disabled = entry.is_empty() or LevelManager.practice_mode
 	if entry.is_empty():
 		details.add_child(_label("NO SAVED GAMES", 14))
@@ -308,9 +316,14 @@ func _select(id: String) -> void:
 		empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		details.add_child(empty)
 		return
-	var title := _label(str(entry.get("name", "")), 13, true)
+	var title := _label(_entry_name(entry), 13, true)
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	details.add_child(title)
+	if automatic:
+		var auto_note := _label("AUTO  Automatically saved at wave start. Loading restarts this wave.", 9)
+		auto_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		auto_note.add_theme_color_override("font_color", SKIN.GOLD)
+		details.add_child(auto_note)
 	var progress := _label(str(entry.get("progress", "")), 12)
 	progress.add_theme_color_override("font_color", SKIN.GOLD)
 	details.add_child(progress)
@@ -331,11 +344,16 @@ func _select(id: String) -> void:
 func _default_notice() -> void:
 	if LevelManager.practice_mode:
 		notice.text = "PRACTICE MODE / SAVING AND LOADING ARE DISABLED."
+		_show_notice(notice.text)
+	elif not SaveManager.autosave_error.is_empty():
+		notice.text = "AUTOSAVE FAILED: " + SaveManager.autosave_error
+		_show_notice(notice.text, true)
 	elif not _from_title and not _can_save:
 		notice.text = "SAVE UNAVAILABLE BETWEEN WAVES."
+		_show_notice(notice.text)
 	else:
 		notice.text = "LOAD RESTARTS THE SAVED WAVE / ESC BACK"
-	_show_notice(notice.text)
+		_show_notice(notice.text)
 
 
 func _show_notice(message: String, is_error := false) -> void:
@@ -348,6 +366,8 @@ func _prompt(action: String) -> void:
 	if LevelManager.practice_mode or (action in ["new", "overwrite"] and (not _can_save or _from_title)):
 		return
 	var target := _selected()
+	if bool(target.get("automatic", false)) and action in ["rename", "overwrite"]:
+		return
 	if action != "new" and target.is_empty():
 		return
 	if action in ["load", "rename", "overwrite"] and not target.get("valid", false):
@@ -358,10 +378,10 @@ func _prompt(action: String) -> void:
 	modal_title.text = {"new": "NEW SAVE", "rename": "RENAME SAVE", "load": "LOAD THIS SAVE?", "overwrite": "OVERWRITE THIS SAVE?", "delete": "DELETE THIS SAVE?"}[action]
 	name_input.visible = action in ["new", "rename"]
 	modal_target.visible = not name_input.visible
-	modal_target.text = str(target.get("name", ""))
+	modal_target.text = _entry_name(target)
 	name_input.text = str(target.get("name", "")) if action == "rename" else ""
 	name_input.placeholder_text = "Name (optional, up to 24 characters)"
-	modal_note.text = {"new": "Leave blank to use the game's default name.", "rename": "Only the name changes. Checkpoint stays the same.", "load": "Restarts this checkpoint. Current run will be replaced." if not _from_title else "Restarts from the beginning of the saved wave.", "overwrite": "Replaces this checkpoint with the current wave opening.", "delete": "This saved game will be permanently removed."}[action]
+	modal_note.text = {"new": "Leave blank to use the game's default name.", "rename": "Only the name changes. Checkpoint stays the same.", "load": "Restarts this checkpoint. Current run will be replaced." if not _from_title else "Restarts from the beginning of the saved wave.", "overwrite": "Replaces this checkpoint with the current wave opening.", "delete": "This saved game will be permanently removed." if not bool(target.get("automatic", false)) else "This autosave will be recreated automatically at the next wave."}[action]
 	accept_button.text = {"new": "CREATE", "rename": "RENAME", "load": "LOAD", "overwrite": "OVERWRITE", "delete": "DELETE"}[action]
 	for control in _controls(panel):
 		control.focus_mode = Control.FOCUS_NONE

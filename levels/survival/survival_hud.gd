@@ -23,6 +23,8 @@ const UPGRADE_STEP : float = 27.0
 
 var _upgrade_frame : Panel
 var _banner_tween : Tween
+var _save_notice_label : Label
+var _save_notice_tween : Tween
 var _upgrade_icons : Array[Control] = []
 var _item_buttons : Dictionary = {}
 ## Boss 血条（只在 Boss 关存在）：左上角位置在手势提示框正下方，居中偏右给左边的名字留位置
@@ -32,6 +34,7 @@ const BOSS_BAR_POS := Vector2( 168, 27 )
 
 func _ready() -> void:
 	$Root.theme = DungeonTheme.THEME
+	_build_save_notice()
 	_build_settings_button()
 	banner_label.add_theme_font_override( "font", DungeonTheme.TITLE_FONT )
 	result_title.add_theme_font_override( "font", DungeonTheme.TITLE_FONT )
@@ -54,6 +57,38 @@ func _ready() -> void:
 	result_panel.visible = false
 	retry_button.pressed.connect( retry_pressed.emit )
 	title_button.pressed.connect( title_pressed.emit )
+
+
+func _build_save_notice() -> void:
+	_save_notice_label = Label.new()
+	_save_notice_label.name = "SaveNotice"
+	_save_notice_label.position = Vector2( 24, 181 )
+	_save_notice_label.size = Vector2( 432, 32 )
+	_save_notice_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_save_notice_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_save_notice_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_save_notice_label.add_theme_font_size_override( "font_size", 9 )
+	_save_notice_label.add_theme_color_override( "font_color", DungeonTheme.GOLD_BRIGHT )
+	_save_notice_label.add_theme_color_override( "font_outline_color", Color( 0, 0, 0, 1 ) )
+	_save_notice_label.add_theme_constant_override( "outline_size", 3 )
+	_save_notice_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_save_notice_label.modulate.a = 0.0
+	$Root.add_child( _save_notice_label )
+
+
+## 非模态存档提示；错误消息保留更长时间并可自动换行。
+func show_save_notice( message : String, is_error : bool = false ) -> void:
+	if _save_notice_tween and _save_notice_tween.is_running():
+		_save_notice_tween.kill()
+	_save_notice_label.text = message
+	_save_notice_label.add_theme_color_override( "font_color", Color( "#ff8078" ) if is_error else DungeonTheme.GOLD_BRIGHT )
+	_save_notice_label.position.y = 181 if is_error else 190
+	_save_notice_label.size.y = 32 if is_error else 20
+	_save_notice_label.modulate.a = 1.0
+	_save_notice_tween = create_tween()
+	_save_notice_tween.set_pause_mode( Tween.TWEEN_PAUSE_PROCESS )
+	_save_notice_tween.tween_interval( 5.0 if is_error else 1.5 )
+	_save_notice_tween.tween_property( _save_notice_label, "modulate:a", 0.0, 0.5 )
 
 
 func _build_settings_button() -> void:
