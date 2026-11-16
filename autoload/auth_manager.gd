@@ -19,6 +19,7 @@ var email: String = ""
 var username: String = ""
 var user_id: String = ""
 var authenticated: bool = false
+var startup_check_complete: bool = false
 var last_error: String = ""
 
 var _access_token := ""
@@ -47,6 +48,7 @@ var _storage_generation := 0
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	if LevelManager.practice_mode:
+		startup_check_complete = true
 		return
 	_http = HTTPRequest.new()
 	_http.process_mode = Node.PROCESS_MODE_ALWAYS
@@ -58,6 +60,9 @@ func _ready() -> void:
 	_select_api_base()
 	if FileAccess.file_exists(SESSION_PATH):
 		_restore_started = _start_storage("load", "")
+		startup_check_complete = not _restore_started
+	else:
+		startup_check_complete = true
 
 
 func _process(_delta: float) -> void:
@@ -229,7 +234,7 @@ func _on_request_completed(result: int, response_code: int, _headers: PackedStri
 			_after_refresh = ""
 			_after_refresh_data = {}
 			if resume_operation.is_empty():
-				_complete("restore", false, "Saved session could not be restored. You can continue as a guest.", {})
+				_complete("restore", false, "Saved sign-in could not be verified. Check your connection and sign in.", {})
 			else:
 				_complete(resume_operation, false, "Account service is unavailable. Please try again.", {})
 			return
@@ -382,6 +387,8 @@ func _safe_error(operation: String, data: Dictionary) -> String:
 
 
 func _complete(operation: String, ok: bool, message: String, data: Dictionary) -> void:
+	if operation == "restore":
+		startup_check_complete = true
 	if not ok:
 		last_error = message
 	else:
@@ -513,6 +520,7 @@ func _on_storage_finished(result: Dictionary) -> void:
 	if not ok:
 		if _restore_started:
 			_restore_started = false
+			startup_check_complete = true
 			_clear_local_storage()
 			_set_busy(false)
 			if not _pending_operation.is_empty():
@@ -540,6 +548,8 @@ func _on_storage_finished(result: Dictionary) -> void:
 			var pending := _pending_operation
 			var pending_data := _pending_data
 			_send_http(pending, str(pending_data.get("path", "")), pending_data.get("payload", {}), bool(pending_data.get("authorization", false)))
+		else:
+			startup_check_complete = true
 		return
 	if not _storage_continuation_operation.is_empty():
 		_continue_after_storage()
