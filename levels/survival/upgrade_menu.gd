@@ -39,7 +39,8 @@ func setup( ids : Array[String], levels : Dictionary ) -> void:
 
 
 func _ready() -> void:
-	layer = 8
+	# 高于摄像头和手势提示（10），避免完整调试面板遮住卡片。
+	layer = 11
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_opened_ms = Time.get_ticks_msec()
 
