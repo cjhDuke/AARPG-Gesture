@@ -15,6 +15,17 @@ var load_button: Button
 var overwrite_button: Button
 var rename_button: Button
 var delete_button: Button
+var sync_button: Button
+var guests_button: Button
+var import_button: Button
+var sync_status: Label
+var guest_mode := false
+var guest_entries: Array[Dictionary] = []
+var guest_selected: Dictionary = {}
+var conflict_modal: Control
+var conflict_id := ""
+var conflict_keep_both: Button
+var _cloud_refresh_pending := false
 var notice: Label
 var counter: Label
 var modal: Control
@@ -43,6 +54,9 @@ func _ready() -> void:
 	_name_font.font_names = PackedStringArray(["Microsoft YaHei", "Noto Sans CJK SC", "sans-serif"])
 	_build()
 	visible = false
+	var cloud := _cloud_manager()
+	if cloud != null and cloud.has_signal("changed"):
+		cloud.changed.connect(_on_cloud_changed)
 
 
 func open(from_title: bool) -> bool:
@@ -59,6 +73,7 @@ func open(from_title: bool) -> bool:
 	is_open = true
 	visible = true
 	modal.visible = false
+	conflict_modal.visible = false
 	_refresh_entries()
 	back.grab_focus()
 	return true
@@ -84,7 +99,14 @@ func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel"):
 		if name_input.has_focus() and name_input.has_ime_text():
 			return
-		if modal.visible:
+		if conflict_modal.visible:
+			conflict_modal.visible = false
+			if _cloud_refresh_pending:
+				_cloud_refresh_pending = false
+				_refresh_entries()
+			_foci(panel)
+			_restore_modal_focus()
+		elif modal.visible:
 			_cancel()
 		else:
 			close()
@@ -140,12 +162,20 @@ func _build() -> void:
 	panel.add_theme_stylebox_override("panel", DungeonTheme.panel())
 	var heading := _label("SAVED GAMES", 24)
 	heading.add_theme_font_override("font", DungeonTheme.TITLE_FONT)
-	_place(heading, panel, Rect2(16, 7, 270, 28))
+	_place(heading, panel, Rect2(16, 7, 210, 28))
+	sync_status = _label("LOCAL", 9)
+	sync_status.clip_text = true
+	sync_status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	sync_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_place(sync_status, panel, Rect2(224, 34, 208, 13))
+	sync_button = _button("SYNC NOW", _sync_now)
+	sync_button.custom_minimum_size.y = 21
+	_place(sync_button, panel, Rect2(254, 8, 94, 23))
 	back = _button("BACK", close)
 	_place(back, panel, Rect2(356, 9, 76, 24))
 	var banner := _label("SELECT A CHECKPOINT TO MANAGE", 8)
 	banner.add_theme_color_override("font_color", SKIN.GOLD)
-	_place(banner, panel, Rect2(16, 34, 416, 13))
+	_place(banner, panel, Rect2(16, 34, 204, 13))
 	var left := Panel.new()
 	left.add_theme_stylebox_override("panel", SKIN.flat(DungeonTheme.BACKGROUND, DungeonTheme.GOLD))
 	_place(left, panel, Rect2(16, 50, 178, 144))
@@ -177,14 +207,18 @@ func _build() -> void:
 	overwrite_button = _button("OVERWRITE", _prompt.bind("overwrite"))
 	rename_button = _button("RENAME", _prompt.bind("rename"))
 	delete_button = _button("DELETE", _prompt.bind("delete"))
+	guests_button = _button("GUESTS", _toggle_guest_mode)
+	import_button = _button("IMPORT", _confirm_import_selected)
 	delete_button.add_theme_color_override("font_color", Color("#ffb08a"))
-	for button in [create_button, load_button, overwrite_button, rename_button, delete_button]:
+	for button in [create_button, load_button, overwrite_button, rename_button, delete_button, guests_button, import_button]:
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.add_theme_font_size_override("font_size", 8)
 		actions.add_child(button)
 	notice = _label("", 8)
 	notice.clip_text = true
 	_place(notice, panel, Rect2(16, 229, 416, 13))
 	_build_modal()
+	_build_conflict_modal()
 
 
 func _build_modal() -> void:
@@ -233,6 +267,58 @@ func _build_modal() -> void:
 	modal.visible = false
 
 
+func _build_conflict_modal() -> void:
+	conflict_modal = Control.new()
+	root.add_child(conflict_modal)
+	conflict_modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var shade := ColorRect.new()
+	shade.color = Color(0, 0, 0, 0.84)
+	conflict_modal.add_child(shade)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var dialog := Panel.new()
+	dialog.name = "ConflictDialog"
+	conflict_modal.add_child(dialog)
+	dialog.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	dialog.offset_left = -214
+	dialog.offset_right = 214
+	dialog.offset_top = -108
+	dialog.offset_bottom = 108
+	dialog.add_theme_stylebox_override("panel", DungeonTheme.panel())
+	var title := _label("SAVE CONFLICT", 18)
+	title.add_theme_color_override("font_color", DungeonTheme.GOLD_BRIGHT)
+	_place(title, dialog, Rect2(14, 8, 390, 24))
+	var columns := HBoxContainer.new()
+	columns.name = "Sides"
+	columns.add_theme_constant_override("separation", 8)
+	_place(columns, dialog, Rect2(14, 37, 400, 118))
+	for side in ["LOCAL", "CLOUD"]:
+		var box := Panel.new()
+		box.name = side + "Side"
+		box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		box.add_theme_stylebox_override("panel", SKIN.flat(DungeonTheme.BACKGROUND, DungeonTheme.GOLD))
+		columns.add_child(box)
+		var heading := _label(side, 12)
+		heading.add_theme_color_override("font_color", DungeonTheme.GOLD)
+		_place(heading, box, Rect2(8, 5, 178, 18))
+		var body := _label("", 9)
+		body.name = side + "Summary"
+		body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_place(body, box, Rect2(8, 25, 178, 86))
+	var note := _label("Choose which version to keep. KEEP BOTH preserves the local copy under a new ID.", 8)
+	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_place(note, dialog, Rect2(16, 159, 396, 18))
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 6)
+	_place(actions, dialog, Rect2(14, 184, 400, 25))
+	var use_local := _button("USE LOCAL", _resolve_conflict.bind("local"))
+	var use_cloud := _button("USE CLOUD", _resolve_conflict.bind("cloud"))
+	conflict_keep_both = _button("KEEP BOTH", _resolve_conflict.bind("both"))
+	for button in [use_local, use_cloud, conflict_keep_both]:
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		actions.add_child(button)
+	conflict_modal.visible = false
+
+
 func _clear(parent: Node) -> void:
 	for child in parent.get_children():
 		parent.remove_child(child)
@@ -256,6 +342,28 @@ func _entry_name(entry: Dictionary) -> String:
 
 func _refresh_entries() -> void:
 	entries.assign(SaveManager.list_saves())
+	var cloud := _cloud_manager()
+	if cloud != null and bool(cloud.call("is_account_context")) and not LevelManager.practice_mode:
+		for conflict in cloud.call("conflicts"):
+			var id := str(conflict.get("id", ""))
+			if id.is_empty() or not _entry_by_id(id).is_empty():
+				continue
+			var local: Dictionary = conflict.get("local", {}) if conflict.get("local", {}) is Dictionary else {}
+			var remote: Dictionary = conflict.get("remote", {}) if conflict.get("remote", {}) is Dictionary else {}
+			var summary: Dictionary = remote.get("summary", {}) if remote.get("summary", {}) is Dictionary else {}
+			var display_name := str(summary.get("name", "")).strip_edges()
+			if display_name.is_empty():
+				display_name = str(local.get("name", "Cloud conflict"))
+			entries.append({
+				"id": id,
+				"name": display_name,
+				"valid": false,
+				"progress": "CONFLICT",
+				"message": "Local copy was deleted. Resolve to choose which copy to keep.",
+				"time": str(summary.get("saved_at", "")),
+				"virtual_conflict": true,
+				"automatic": false,
+			})
 	if _entry_by_id(selected_id).is_empty():
 		selected_id = ""
 	_refresh()
@@ -264,6 +372,21 @@ func _refresh_entries() -> void:
 
 
 func _refresh() -> void:
+	var cloud := _cloud_manager()
+	var account_context := cloud != null and bool(cloud.call("is_account_context")) and not LevelManager.practice_mode
+	sync_button.visible = account_context
+	sync_status.visible = not account_context
+	sync_status.text = "PRACTICE · LOCAL ONLY" if LevelManager.practice_mode else "LOCAL · SIGN IN TO SYNC"
+	if account_context:
+		sync_status.visible = true
+		sync_status.text = str(cloud.call("summary"))
+	sync_status.tooltip_text = sync_status.text
+	sync_status.clip_text = true
+	if guest_mode and account_context:
+		guest_entries.assign(cloud.call("guest_saves"))
+		_refresh_guest_view()
+		return
+	guest_mode = false
 	if _selected().is_empty():
 		selected_id = "" if entries.is_empty() else str(entries[0].get("id", ""))
 	_clear(list)
@@ -287,14 +410,64 @@ func _refresh() -> void:
 		title.offset_right = -8
 		title.offset_top = 4
 		button.add_child(title)
-		var summary := _label("%s\n%s" % [str(entry.get("progress", "")), str(entry.get("time", ""))], 8)
-		_place(summary, button, Rect2(8, 20, 145, 22))
+		var save_state := str(cloud.call("save_status", id)) if account_context else "LOCAL"
+		var summary := _label("%s\n%s  ·  %s" % [str(entry.get("progress", "")), str(entry.get("time", "")), save_state], 8)
+		_place(summary, button, Rect2(8, 20, 158, 22))
+		if save_state in ["PENDING", "SYNCING", "CONFLICT", "ERROR"]:
+			summary.add_theme_color_override("font_color", Color("#ffb08a") if save_state == "ERROR" else DungeonTheme.GOLD_BRIGHT)
 	_select(selected_id)
+	guests_button.visible = account_context
+	guests_button.text = "GUESTS"
+	import_button.visible = false
 	create_button.visible = not _from_title
 	overwrite_button.visible = not _from_title
 	create_button.disabled = not _can_save or LevelManager.practice_mode
 	_foci(panel)
 	_default_notice()
+	if account_context:
+		var pending := int(cloud.call("pending_count"))
+		if pending > 0 and SaveManager.autosave_error.is_empty():
+			_show_notice("%d SAVE CHANGE(S) WAITING TO SYNC." % pending)
+func _refresh_guest_view() -> void:
+	_clear(list)
+	_clear(details)
+	counter.text = "%d GUEST SAVES · SELECT TO IMPORT" % guest_entries.size()
+	for guest in guest_entries:
+		var id := str(guest.get("id", ""))
+		var row := HBoxContainer.new()
+		row.custom_minimum_size.y = 34
+		list.add_child(row)
+		var check := CheckBox.new()
+		check.button_pressed = bool(guest_selected.get(id, false))
+		check.disabled = not bool(guest.get("valid", false))
+		check.set_meta("guest_id", id)
+		check.toggled.connect(func(value: bool) -> void:
+			guest_selected[id] = value
+			import_button.disabled = not guest_selected.values().has(true)
+		)
+		row.add_child(check)
+		var info := _label("%s · %s\n%s" % [str(guest.get("name", "Guest save")), str(guest.get("progress", "")), str(guest.get("time", ""))], 8, true)
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(info)
+		var one := _button("IMPORT", _import_guest.bind(id))
+		one.set_meta("guest_id", id)
+		one.custom_minimum_size = Vector2(54, 24)
+		one.disabled = not bool(guest.get("valid", false))
+		row.add_child(one)
+	if guest_entries.is_empty():
+		list.add_child(_label("NO GUEST SAVES ON THIS DEVICE.", 10))
+	var note := _label("Choose each save to copy. Source guest saves remain on this device.", 10)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	details.add_child(note)
+	for button in [create_button, load_button, overwrite_button, rename_button, delete_button]:
+		button.visible = false
+	guests_button.visible = true
+	guests_button.text = "SAVES"
+	import_button.visible = true
+	import_button.disabled = not guest_selected.values().has(true)
+	import_button.text = "IMPORT SELECTED"
+	_foci(panel)
+	_show_notice("IMPORT COPIES SELECTED SAVES; NOTHING IS AUTO-IMPORTED.")
 
 
 func _select(id: String) -> void:
@@ -310,6 +483,8 @@ func _select(id: String) -> void:
 	overwrite_button.disabled = not valid or automatic or not _can_save or LevelManager.practice_mode
 	rename_button.disabled = not valid or automatic or LevelManager.practice_mode
 	delete_button.disabled = entry.is_empty() or LevelManager.practice_mode
+	if bool(entry.get("virtual_conflict", false)):
+		delete_button.disabled = true
 	if entry.is_empty():
 		details.add_child(_label("NO SAVED GAMES", 14))
 		var empty := _label("Start a new game to create a checkpoint." if _from_title else "Choose + NEW to save this wave checkpoint.", 11)
@@ -333,12 +508,170 @@ func _select(id: String) -> void:
 		var reason := _label(message if not message.is_empty() else "DAMAGED SAVE - CANNOT LOAD", 10)
 		reason.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		details.add_child(reason)
+		var cloud := _cloud_manager()
+		var conflict_exists := not LevelManager.practice_mode and cloud != null and bool(cloud.call("is_account_context")) and str(cloud.call("save_status", selected_id)) == "CONFLICT"
+		if bool(entry.get("virtual_conflict", false)) or conflict_exists:
+			var resolve := _button("RESOLVE CONFLICT", _open_conflict)
+			resolve.name = "ResolveConflict"
+			resolve.add_theme_color_override("font_color", DungeonTheme.GOLD_BRIGHT)
+			details.add_child(resolve)
+			_foci(details)
 		return
 	details.add_child(_label("HP %s   PSI %s" % [str(entry.get("hp", "")), str(entry.get("psi", ""))]))
 	details.add_child(_label("APPLES %d / 3   KILLS %d" % [int(entry.get("apples", 0)), int(entry.get("kills", 0))]))
 	details.add_child(_label("UPGRADES", 9))
 	var upgrades := str(entry.get("upgrades", ""))
 	details.add_child(_label(upgrades if not upgrades.is_empty() else "NONE YET", 10))
+	var cloud := _cloud_manager()
+	if not LevelManager.practice_mode and cloud != null and bool(cloud.call("is_account_context")) and str(cloud.call("save_status", selected_id)) == "CONFLICT":
+		var resolve := _button("RESOLVE CONFLICT", _open_conflict)
+		resolve.name = "ResolveConflict"
+		resolve.add_theme_color_override("font_color", DungeonTheme.GOLD_BRIGHT)
+		details.add_child(resolve)
+		_foci(details)
+
+
+func _cloud_manager() -> Node:
+	return get_node_or_null("/root/CloudSaveManager")
+
+
+func _on_cloud_changed() -> void:
+	if not is_open:
+		return
+	if modal.visible or conflict_modal.visible:
+		_cloud_refresh_pending = true
+		var cloud := _cloud_manager()
+		if cloud != null and bool(cloud.call("is_account_context")):
+			sync_status.text = str(cloud.call("summary"))
+		return
+	var focus := get_viewport().gui_get_focus_owner()
+	var focus_id := str(focus.get_meta("save_id", focus.get_meta("guest_id", ""))) if is_instance_valid(focus) else ""
+	_refresh_entries()
+	if is_instance_valid(focus) and focus.is_visible_in_tree() and not (focus is Button and focus.disabled):
+		focus.grab_focus()
+	elif not focus_id.is_empty():
+		for control in _controls(panel):
+			if str(control.get_meta("save_id", control.get_meta("guest_id", ""))) == focus_id:
+				control.grab_focus()
+				break
+
+
+func _sync_now() -> void:
+	var cloud := _cloud_manager()
+	if LevelManager.practice_mode or cloud == null or not bool(cloud.call("is_account_context")):
+		return
+	cloud.call("sync_now")
+	_show_notice("SYNC REQUESTED. STATUS WILL UPDATE WHEN THE SERVER RESPONDS.")
+
+
+func _toggle_guest_mode() -> void:
+	var cloud := _cloud_manager()
+	if LevelManager.practice_mode or cloud == null or not bool(cloud.call("is_account_context")):
+		return
+	guest_mode = not guest_mode
+	if not guest_mode:
+		_refresh_entries()
+	else:
+		guest_entries.assign(cloud.call("guest_saves"))
+		_refresh()
+
+
+func _import_guest(id: String) -> void:
+	var cloud := _cloud_manager()
+	if LevelManager.practice_mode or cloud == null or not bool(cloud.call("is_account_context")):
+		return
+	if bool(cloud.call("import_guest_save", id)):
+		guest_selected.erase(id)
+		_show_notice("GUEST SAVE COPIED. CLOUD SYNC STATUS WILL UPDATE SEPARATELY.")
+	else:
+		_show_notice("GUEST SAVE COULD NOT BE COPIED.", true)
+	_refresh_entries()
+	guest_mode = true
+	_refresh()
+
+
+func _confirm_import_selected() -> void:
+	var selected: Array[String] = []
+	for id in guest_selected:
+		if bool(guest_selected[id]):
+			selected.append(str(id))
+	if selected.is_empty():
+		return
+	_action = "import_selected"
+	_pending_id = ",".join(selected)
+	_modal_focus = get_viewport().gui_get_focus_owner()
+	modal_title.text = "IMPORT SELECTED GUEST SAVES?"
+	modal_target.text = "%d selected save(s) will be copied to this account.\nOriginal guest saves stay on this device." % selected.size()
+	modal_note.text = "Nothing will be imported until you confirm."
+	name_input.visible = false
+	modal_target.visible = true
+	accept_button.text = "IMPORT"
+	for control in _controls(panel):
+		control.focus_mode = Control.FOCUS_NONE
+	modal.visible = true
+	_foci(modal)
+	cancel_button.grab_focus()
+
+
+func _open_conflict() -> void:
+	var cloud := _cloud_manager()
+	if LevelManager.practice_mode or cloud == null or not bool(cloud.call("is_account_context")):
+		return
+	var conflict: Dictionary = {}
+	for item in cloud.call("conflicts"):
+		if str(item.get("id", "")) == selected_id:
+			conflict = item
+			break
+	if conflict.is_empty():
+		return
+	conflict_id = selected_id
+	_modal_focus = get_viewport().gui_get_focus_owner()
+	var local: Variant = conflict.get("local", {})
+	var remote: Variant = conflict.get("remote", {})
+	conflict_modal.get_node("ConflictDialog/Sides/LOCALSide/LOCALSummary").text = _conflict_summary(local if local is Dictionary else {}, {}, bool(conflict.get("local_deleted", false)))
+	conflict_modal.get_node("ConflictDialog/Sides/CLOUDSide/CLOUDSummary").text = _conflict_summary({}, remote if remote is Dictionary else {})
+	conflict_modal.visible = true
+	_foci(conflict_modal)
+	conflict_keep_both.grab_focus()
+
+
+func _conflict_summary(record: Dictionary, metadata: Dictionary, local_deleted := false) -> String:
+	var checkpoint: Dictionary = record.get("checkpoint", {}) if record.get("checkpoint", {}) is Dictionary else {}
+	var cloud_summary: Dictionary = metadata.get("summary", {}) if metadata.get("summary", {}) is Dictionary else {}
+	var source := checkpoint if not checkpoint.is_empty() else cloud_summary
+	var stage := str(source.get("stage", source.get("stage_name", "?")))
+	var wave := str(source.get("wave", source.get("wave_index", "?")))
+	var hp := str(source.get("hp", source.get("player_hp", "?")))
+	var saved := str(record.get("saved_at", source.get("time", source.get("saved_at", "?"))))
+	var deleted := bool(metadata.get("deleted", false))
+	var availability := "LOCAL COPY DELETED" if local_deleted else ("DELETED ON CLOUD" if deleted else "AVAILABLE")
+	return "STAGE %s\nWAVE %s\nHP %s\nSAVED %s\n%s" % [stage, wave, hp, saved, availability]
+
+
+func _resolve_conflict(choice: String) -> void:
+	var cloud := _cloud_manager()
+	if cloud == null or conflict_id.is_empty():
+		return
+	cloud.call("resolve_conflict", conflict_id, choice)
+	conflict_modal.visible = false
+	conflict_id = ""
+	_cloud_refresh_pending = false
+	_refresh_entries()
+	_show_notice("CONFLICT CHOICE SUBMITTED. WAITING FOR SYNC STATUS.")
+	_foci(panel)
+	_restore_modal_focus()
+
+
+func _restore_modal_focus() -> void:
+	if is_instance_valid(_modal_focus) and _modal_focus.is_visible_in_tree() and not (_modal_focus is Button and _modal_focus.disabled):
+		_modal_focus.grab_focus()
+	else:
+		var resolve := details.find_child("ResolveConflict", true, false)
+		if resolve is Button and resolve.is_visible_in_tree():
+			resolve.grab_focus()
+		else:
+			back.grab_focus()
+	_modal_focus = null
 
 
 func _default_notice() -> void:
@@ -398,6 +731,9 @@ func _cancel() -> void:
 	modal.visible = false
 	_action = ""
 	_pending_id = ""
+	if _cloud_refresh_pending:
+		_cloud_refresh_pending = false
+		_refresh_entries()
 	_foci(panel)
 	if is_instance_valid(_modal_focus) and _modal_focus.is_visible_in_tree():
 		_modal_focus.grab_focus()
@@ -407,6 +743,25 @@ func _cancel() -> void:
 
 func _accept() -> void:
 	if _action.is_empty() or (name_input.visible and name_input.has_ime_text()):
+		return
+	if _action == "import_selected":
+		var cloud := _cloud_manager()
+		var imported := 0
+		if not LevelManager.practice_mode and cloud != null and bool(cloud.call("is_account_context")):
+			for id in _pending_id.split(",", false):
+				if bool(cloud.call("import_guest_save", id)):
+					imported += 1
+					guest_selected.erase(id)
+		modal.visible = false
+		_action = ""
+		_pending_id = ""
+		_cloud_refresh_pending = false
+		_refresh_entries()
+		guest_mode = true
+		_refresh()
+		_show_notice("%d GUEST SAVE(S) COPIED. SYNC STATUS UPDATES SEPARATELY." % imported, imported == 0)
+		_foci(panel)
+		_restore_modal_focus()
 		return
 	var action := _action
 	var target_id := _pending_id

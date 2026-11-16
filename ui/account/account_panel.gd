@@ -36,7 +36,10 @@ var _fade_tween: Tween
 var _error_overlay: Control
 var _error_message: Label
 var _error_ok: Button
+var _error_cancel: Button
 var _error_return_focus: Control
+var _error_confirm_callback: Callable
+var _save_storage_note: Label
 const PASSWORD_MIN_LENGTH := 8
 const PASSWORD_MAX_LENGTH := 128
 const FADE_IN_SECONDS := 0.28
@@ -92,8 +95,20 @@ func _input(event: InputEvent) -> void:
 	if not visible:
 		return
 	if _error_overlay.visible:
-		if event.is_action_pressed("ui_cancel") or event.is_action_pressed("pause") or event.is_action_pressed("ui_accept"):
+		if event.is_action_pressed("ui_cancel") or event.is_action_pressed("pause"):
 			_dismiss_error()
+			get_viewport().set_input_as_handled()
+		elif event.is_action_pressed("ui_accept"):
+			if _error_confirm_callback.is_valid():
+				var focus := get_viewport().gui_get_focus_owner()
+				if focus == _error_cancel:
+					_dismiss_error()
+				elif focus == _error_ok:
+					_confirm_error_dialog()
+				else:
+					_error_cancel.grab_focus()
+			else:
+				_confirm_error_dialog()
 			get_viewport().set_input_as_handled()
 		return
 	if event.is_action_pressed("ui_cancel") or event.is_action_pressed("pause"):
@@ -202,8 +217,9 @@ func _build() -> void:
 	actions.add_child(_mode_button)
 	_reset_button = _button("FORGOT PASSWORD", _open_reset)
 	_content.add_child(_reset_button)
-	var cloud := _label("Game saves are stored on this device.", 10, DungeonTheme.PSI)
-	_content.add_child(cloud)
+	_save_storage_note = _label("Game saves stay on this device. Sign in to sync.", 10, DungeonTheme.PSI)
+	_save_storage_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_content.add_child(_save_storage_note)
 	var privacy := _label("Camera stays on this device.", 9, DungeonTheme.MUTED)
 	_content.add_child(privacy)
 	var logout := _button("LOG OUT", _logout)
@@ -258,19 +274,30 @@ func _build_error_dialog() -> void:
 	_error_message.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_error_message.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	content.add_child(_error_message)
-	_error_ok = _button("OK", _dismiss_error)
+	var dialog_actions := HBoxContainer.new()
+	dialog_actions.add_theme_constant_override("separation", 8)
+	content.add_child(dialog_actions)
+	_error_ok = _button("OK", _confirm_error_dialog)
+	_error_ok.name = "Confirm"
 	_error_ok.custom_minimum_size.y = 26
-	content.add_child(_error_ok)
-	for direction in ["top", "bottom", "left", "right"]:
-		_error_ok.set("focus_neighbor_" + direction, NodePath("."))
-	_error_ok.focus_next = NodePath(".")
-	_error_ok.focus_previous = NodePath(".")
+	_error_ok.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dialog_actions.add_child(_error_ok)
+	_error_cancel = _button("CANCEL", _dismiss_error)
+	_error_cancel.name = "Cancel"
+	_error_cancel.custom_minimum_size.y = 26
+	_error_cancel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dialog_actions.add_child(_error_cancel)
 	_error_overlay.visible = false
+	_error_cancel.visible = false
 
 func _show_error(message: String, field: Control = null) -> void:
 	_status.text = message
 	_error_message.text = message
 	_error_return_focus = field if is_instance_valid(field) else get_viewport().gui_get_focus_owner()
+	_error_confirm_callback = Callable()
+	_error_ok.text = "OK"
+	_error_cancel.visible = false
+	_configure_error_dialog_focus(false)
 	_panel.process_mode = Node.PROCESS_MODE_DISABLED
 	_error_overlay.visible = true
 	_error_ok.grab_focus()
@@ -281,6 +308,41 @@ func _dismiss_error(restore_focus: bool = true) -> void:
 	if restore_focus and is_instance_valid(_error_return_focus) and _error_return_focus.is_visible_in_tree():
 		_error_return_focus.grab_focus()
 	_error_return_focus = null
+	_error_confirm_callback = Callable()
+	_error_cancel.visible = false
+	_error_ok.text = "OK"
+	_configure_error_dialog_focus(false)
+
+func _confirm_error_dialog() -> void:
+	var callback := _error_confirm_callback
+	var return_focus := _error_return_focus
+	_dismiss_error(false)
+	if callback.is_valid():
+		callback.call()
+	elif is_instance_valid(return_focus) and return_focus.is_visible_in_tree():
+		return_focus.grab_focus()
+
+func _show_confirmation(message: String, confirm_label: String, callback: Callable) -> void:
+	_error_message.text = message
+	_error_return_focus = get_viewport().gui_get_focus_owner()
+	_error_confirm_callback = callback
+	_error_ok.text = confirm_label
+	_error_cancel.visible = true
+	_configure_error_dialog_focus(true)
+	_panel.process_mode = Node.PROCESS_MODE_DISABLED
+	_error_overlay.visible = true
+	_error_cancel.grab_focus()
+
+func _configure_error_dialog_focus(with_cancel: bool) -> void:
+	var ok_target := NodePath("../Cancel") if with_cancel else NodePath(".")
+	var cancel_target := NodePath("../Confirm") if with_cancel else NodePath(".")
+	_error_ok.focus_next = ok_target
+	_error_ok.focus_previous = ok_target
+	_error_cancel.focus_next = cancel_target
+	_error_cancel.focus_previous = cancel_target
+	for direction in ["top", "bottom", "left", "right"]:
+		_error_ok.set("focus_neighbor_" + direction, ok_target)
+		_error_cancel.set("focus_neighbor_" + direction, cancel_target)
 
 func _label(value: String, size: int, color: Color) -> Label:
 	var label := Label.new()
@@ -307,6 +369,9 @@ func _button(value: String, action: Callable) -> Button:
 
 func _refresh() -> void:
 	var logged := AuthManager.authenticated
+	var cloud: Node = get_node_or_null("/root/CloudSaveManager")
+	var account_context := cloud != null and bool(cloud.call("is_account_context"))
+	_save_storage_note.text = "Signed-in saves sync to your account. Guest saves stay on this device." if account_context else "Game saves stay on this device. Sign in to sync."
 	for row in _form_rows:
 		row.visible = not logged
 	for c in [_email, _password, _confirm, _code, _remember, _submit, _mode_button, _send_code, _password_toggle, _reset_button, _username]:
@@ -542,7 +607,11 @@ func _save_username() -> void:
 
 func _logout() -> void:
 	if not AuthManager.busy:
-		AuthManager.logout()
+		var cloud: Node = get_node_or_null("/root/CloudSaveManager")
+		if cloud != null and bool(cloud.call("is_account_context")) and int(cloud.call("pending_count")) > 0:
+			_show_confirmation("Queued save changes will stay on this device and stop syncing while you are signed out. Log out now?", "LOG OUT", func() -> void: AuthManager.logout())
+		else:
+			AuthManager.logout()
 
 func _clear_sensitive() -> void:
 	for field in _sensitive_controls:

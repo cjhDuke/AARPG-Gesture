@@ -1,10 +1,10 @@
 # PSI HAND 账号服务
 
-阶段 1 提供邮箱验证码注册、邮箱密码登录、密码重置、会话续期、退出账号和自定义显示名。API 前缀为 `/api/v1`。阶段 2A 已新增云存档服务端候选与隔离验证，**尚未部署或接入游戏**；协议、验证和部署前提见 [cloud-saves.md](../docs/ai/cloud-saves.md)。账号接入与验收记录见 [accounts.md](../docs/ai/accounts.md)。
+服务提供邮箱验证码注册、邮箱密码登录、密码重置、会话续期、退出账号、自定义显示名和云存档。API 前缀为 `/api/v1`。云存档 schema 3 与 Nginx 80k 请求限制已部署至 `game.dukechen.top`；部署备份、健康检查和公网接口验证记录见 [cloud-saves.md](../docs/ai/cloud-saves.md)。客户端双设备完整 E2E 仍待最终验收，不能据此宣称跨设备闭环已完成。账号接入与验收见 [accounts.md](../docs/ai/accounts.md)。
 
 注册可携带 `username`（2～24 字，支持 Unicode 字母、数字、空格、下划线和连字符，允许重名）；`PATCH /api/v1/me` 使用 Bearer 会话修改当前账号显示名，登录仍用邮箱。schema 1 自动迁移到 2，保留原密码哈希和会话，旧账号/旧客户端会获得默认显示名。密码原样处理、区分大小写，支持数字与大小写字母；注册和密码重置长度为 8～128 字符，登录继续接受 1～128 字符以兼容旧账号。
 
-候选云档服务会将 schema 1/2 升级到 3。发布时必须同时包含 `cloud_saves.py / save_payload.py / request_limits.py`；旧账号版不能直接读取升级后的 schema 3，部署与回滚需先处理数据库一致性备份。云档接口仅接受当前账号会话，使用 revision 条件写入和 operation_id 幂等；账号请求仍限制 8 KiB，云档 PUT 请求封装限制 80 KiB、规范载荷限制 64 KiB。Nginx 的 80k 候选配置须验证后加载。
+云档服务将 schema 1/2 升级到 3。发布包含 `cloud_saves.py / save_payload.py / request_limits.py`；旧账号版不能直接读取 schema 3，回滚须同步考虑数据库兼容性。云档接口仅接受当前账号会话，使用 revision 条件写入和 operation_id 幂等；账号请求仍限制 8 KiB，云档 PUT 请求封装限制 80 KiB、规范载荷限制 64 KiB。生产 Nginx 已加载 80k 限制。
 
 请求字段校验错误（HTTP 422）返回不包含提交字段值的固定错误码：`invalid_password_length`（密码长度不符，固定提示 8-128 字符）、`invalid_email`（邮箱格式无效）、`invalid_code_input`（验证码或挑战 ID 格式无效）、`invalid_username`（显示名不符合规则）；其他字段错误使用 `invalid_input`。验证码内容错误或过期仍返回 `invalid_code`。
 
