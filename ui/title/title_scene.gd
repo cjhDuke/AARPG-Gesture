@@ -37,10 +37,17 @@ var _title_active: bool = true
 var _account_open: bool = false
 var _account_button: Button
 var _account_panel: CanvasLayer
+var _intro_finished := false
+var _auth_gate_pending := true
+var _checking_status: Label
+var _menu_origin_y := 0.0
+var _menu_position_known := false
+var _menu_tween: Tween
 
 
 func _ready() -> void:
 	get_tree().paused = true
+	logo.process_mode = Node.PROCESS_MODE_ALWAYS
 	# 从游戏里返回标题时，加载流程结束会取消暂停，这里重新暂停
 	LevelManager.level_loaded.connect( _pause_tree )
 	PlayerManager.player.visible = false
@@ -50,18 +57,22 @@ func _ready() -> void:
 	PauseMenu.process_mode = Node.PROCESS_MODE_DISABLED
 	PauseMenu.hidden.connect(_on_settings_closed)
 	SavedGames.closed.connect(_on_saved_games_closed)
-	AuthManager.session_changed.connect(_refresh_account_button)
+	AuthManager.session_changed.connect(_queue_auth_gate_sync)
+	AuthManager.busy_changed.connect(_queue_auth_gate_sync)
 
 	title_ui.visible = false
 	menu.visible = false
 	marker.visible = false
+	_auth_gate_pending = not LevelManager.practice_mode
 
 	_build_account_entry()
+		_build_checking_status()
 
 	LevelManager.level_load_started.connect(exit_title_screen)
 
 	# 启动和从游戏里返回标题都一样：直接进标题，字母下落动画每次都重播
 	setup_title_screen()
+	_sync_auth_gate.call_deferred()
 
 
 func setup_title_screen() -> void:
@@ -99,6 +110,7 @@ func setup_title_screen() -> void:
 func _on_logo_finished() -> void:
 	if not _title_active:
 		return
+	_intro_finished = true
 	orbit_boomerang.visible = true
 	var tw := title_ui.create_tween()
 	tw.tween_property(subtitle, "modulate:a", 1.0, 0.4)
@@ -106,28 +118,36 @@ func _on_logo_finished() -> void:
 
 
 func _show_menu() -> void:
+	if not _login_ready():
+		return
 	menu.visible = true
 	# 等一帧让容器排好版，再记下按钮的最终位置
 	await get_tree().process_frame
-	if not is_inside_tree() or not _title_active:
+	if not is_inside_tree() or not _title_active or not _login_ready():
 		return
-	var final_y := menu.position.y
+	if not _menu_position_known:
+		_menu_origin_y = menu.position.y
+		_menu_position_known = true
+	var final_y := _menu_origin_y
 	menu.position.y = final_y + MENU_SLIDE_DISTANCE
 	menu.modulate.a = 0.0
+	if _menu_tween:
+		_menu_tween.kill()
 	var tw := title_ui.create_tween()
+	_menu_tween = tw
 	tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 	tw.set_parallel(true)
 	tw.tween_property(menu, "position:y", final_y, MENU_SLIDE_TIME) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tw.tween_property(menu, "modulate:a", 1.0, MENU_SLIDE_TIME)
 	tw.chain().tween_callback(func() -> void:
-		if _title_active and not _starting and not _settings_open and not _saved_open and not _account_open:
+		if _title_active and _login_ready() and not _starting and not _settings_open and not _saved_open and not _account_open:
 			button_start.grab_focus())
 
 
 ## 选择标记滑到获得焦点的按钮左侧
 func _move_marker(button: Button) -> void:
-	if _starting or not _title_active:
+	if _starting or not _title_active or not _login_ready():
 		return
 	var target := Vector2(MARKER_OFFSET_X, button.position.y + button.size.y * 0.5)
 	marker.visible = true
@@ -143,6 +163,9 @@ func _move_marker(button: Button) -> void:
 
 
 func start_game() -> void:
+	if not _login_ready():
+		_sync_auth_gate.call_deferred()
+		return
 	if _starting or _settings_open or _saved_open or _account_open:
 		return
 	_starting = true
@@ -164,6 +187,8 @@ func quit_game() -> void:
 
 
 func open_settings() -> void:
+	if not _login_ready():
+		return
 	if _starting or _settings_open or _saved_open or _account_open:
 		return
 	PauseMenu.show_title_settings()
@@ -176,6 +201,8 @@ func open_settings() -> void:
 
 
 func open_saved_games() -> void:
+	if not _login_ready():
+		return
 	if _starting or _settings_open or _saved_open or _account_open or not _title_active:
 		return
 	if not SavedGames.open(true):
@@ -190,19 +217,27 @@ func _on_settings_closed() -> void:
 	if not _settings_open or not _title_active:
 		return
 	_settings_open = false
+	if not _login_ready():
+		_sync_auth_gate.call_deferred()
+		return
 	title_ui.process_mode = Node.PROCESS_MODE_INHERIT
 	for button in [button_start, button_saved, button_settings, button_quit]:
 		button.disabled = false
+	_sync_auth_gate.call_deferred()
 
 
 func _on_saved_games_closed() -> void:
 	if not _saved_open or not _title_active:
 		return
 	_saved_open = false
+	if not _login_ready():
+		_sync_auth_gate.call_deferred()
+		return
 	title_ui.process_mode = Node.PROCESS_MODE_INHERIT
 	for button in [button_start, button_saved, button_settings, button_quit]:
 		button.disabled = false
 	button_saved.grab_focus()
+	_sync_auth_gate.call_deferred()
 
 
 func _build_account_entry() -> void:
@@ -239,25 +274,96 @@ func _refresh_account_button() -> void:
 	_account_button.text = AuthManager.display_name() if AuthManager.authenticated else "GUEST"
 
 
-func _open_account() -> void:
+func _open_account(login_required: bool = false) -> void:
 	if _starting or _settings_open or _saved_open or _account_open or not _title_active:
 		return
 	_account_open = true
 	for button in [button_start, button_saved, button_settings, button_quit, _account_button]:
 		button.disabled = true
 	title_ui.process_mode = Node.PROCESS_MODE_DISABLED
-	_account_panel.open()
+	_account_panel.open(login_required)
 
 
 func _on_account_closed() -> void:
 	if not _account_open or not _title_active:
 		return
 	_account_open = false
+	if not _login_ready():
+		_sync_auth_gate.call_deferred()
+		return
 	title_ui.process_mode = Node.PROCESS_MODE_INHERIT
 	for button in [button_start, button_saved, button_settings, button_quit, _account_button]:
 		button.disabled = false
 	_refresh_account_button()
 	_account_button.grab_focus()
+	if _intro_finished and not menu.visible:
+		_show_menu()
+
+
+func _login_ready() -> bool:
+	return LevelManager.practice_mode or (not _auth_gate_pending and AuthManager.startup_check_complete and AuthManager.authenticated and not AuthManager.busy)
+
+
+func _build_checking_status() -> void:
+	_checking_status = Label.new()
+	_checking_status.text = "CHECKING SIGN-IN..."
+	_checking_status.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	_checking_status.offset_left = 16
+	_checking_status.offset_right = -16
+	_checking_status.offset_top = -32
+	_checking_status.offset_bottom = -12
+	_checking_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_checking_status.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_checking_status.visible = false
+	title_ui.add_child(_checking_status)
+
+
+func _queue_auth_gate_sync(_value: bool = false) -> void:
+	_sync_auth_gate.call_deferred()
+
+
+func _lock_main_menu() -> void:
+	menu.visible = false
+	marker.visible = false
+	if _menu_tween:
+		_menu_tween.kill()
+	for button in [button_start, button_saved, button_settings, button_quit, _account_button]:
+		if is_instance_valid(button):
+			button.disabled = true
+
+
+func _sync_auth_gate() -> void:
+	if not is_inside_tree() or not _title_active or _starting or LevelManager.practice_mode:
+		return
+	_refresh_account_button()
+	_checking_status.visible = false
+	if not AuthManager.startup_check_complete or AuthManager.busy:
+		_lock_main_menu()
+		_checking_status.visible = not _account_open
+		return
+	if not AuthManager.authenticated:
+		_auth_gate_pending = true
+		_lock_main_menu()
+		if _settings_open or _saved_open:
+			return
+		if _account_open:
+			_account_panel.open(true)
+		else:
+			_open_account(true)
+		return
+	_auth_gate_pending = false
+	if _account_open:
+		if _account_panel.login_required:
+			_account_panel.close()
+		else:
+			return
+	if _settings_open or _saved_open:
+		return
+	title_ui.process_mode = Node.PROCESS_MODE_INHERIT
+	for button in [button_start, button_saved, button_settings, button_quit, _account_button]:
+		button.disabled = false
+	if _intro_finished and not menu.visible:
+		_show_menu()
 
 
 func exit_title_screen() -> void:

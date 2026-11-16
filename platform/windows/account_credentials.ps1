@@ -38,7 +38,7 @@ try {
     $temporaryPath = $SessionPath + '.tmp'
     [IO.File]::WriteAllText($temporaryPath, [Convert]::ToBase64String($protected), [Text.Encoding]::ASCII)
     if ([IO.File]::Exists($SessionPath)) {
-        [IO.File]::Replace($temporaryPath, $SessionPath, $null)
+        [IO.File]::Replace($temporaryPath, $SessionPath, [System.Management.Automation.Language.NullString]::Value)
     } else {
         [IO.File]::Move($temporaryPath, $SessionPath)
     }
