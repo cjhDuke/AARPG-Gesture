@@ -214,6 +214,10 @@ func _build_account_entry() -> void:
 	_account_button.offset_top = 12.0
 	_account_button.offset_bottom = 38.0
 	_account_button.text = "GUEST"
+	var account_font := SystemFont.new()
+	account_font.font_names = PackedStringArray(["Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Arial", "sans-serif"])
+	_account_button.add_theme_font_override("font", account_font)
+	_account_button.add_theme_font_size_override("font_size", 10)
 	_account_button.clip_text = true
 	_account_button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_account_button.pressed.connect(_open_account)
@@ -232,7 +236,7 @@ func _build_account_entry() -> void:
 func _refresh_account_button() -> void:
 	if not is_instance_valid(_account_button):
 		return
-	_account_button.text = AuthManager.mask_email() if AuthManager.authenticated else "GUEST"
+	_account_button.text = AuthManager.display_name() if AuthManager.authenticated else "GUEST"
 
 
 func _open_account() -> void:

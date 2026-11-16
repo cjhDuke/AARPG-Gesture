@@ -26,6 +26,11 @@ var _countdown_timer: Timer
 var _sensitive_controls: Array[LineEdit] = []
 var _pending_code_email := ""
 var _pending_code_purpose := ""
+var _username: LineEdit
+var _profile_name: LineEdit
+var _profile_email: Label
+var _save_name: Button
+var _form_rows: Array[Control] = []
 
 func _ready() -> void:
 	layer = 30
@@ -48,9 +53,11 @@ func open() -> void:
 	visible = true
 	_mode = "LOGIN"
 	_clear_sensitive()
+	if AuthManager.authenticated:
+		_profile_name.text = AuthManager.username
 	_refresh()
 	if AuthManager.authenticated:
-		$Root/Panel/Scroll/Content/Logout.grab_focus()
+		_profile_name.grab_focus()
 	else:
 		_email.grab_focus()
 
@@ -114,6 +121,7 @@ func _build() -> void:
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_content.add_child(_status)
 	var email_row := HBoxContainer.new()
+	_form_rows.append(email_row)
 	_content.add_child(email_row)
 	_email = _line("Email address")
 	_email.max_length = 254
@@ -121,24 +129,34 @@ func _build() -> void:
 	_email.text_changed.connect(_on_email_changed)
 	email_row.add_child(_email)
 	var pw_row := HBoxContainer.new()
+	_form_rows.append(pw_row)
 	_content.add_child(pw_row)
+	var pw_fields := HBoxContainer.new()
+	pw_fields.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pw_row.add_child(pw_fields)
 	_password = _line("Password")
 	_password.max_length = 128
 	_password.secret = true
 	_password.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_sensitive_controls.append(_password)
-	pw_row.add_child(_password)
-	_password_toggle = _button("SHOW", _toggle_password)
-	pw_row.add_child(_password_toggle)
+	pw_fields.add_child(_password)
 	_confirm = _line("Confirm password")
 	_confirm.max_length = 128
 	_confirm.secret = true
+	_confirm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_sensitive_controls.append(_confirm)
-	_content.add_child(_confirm)
+	pw_fields.add_child(_confirm)
+	_password_toggle = _button("SHOW", _toggle_password)
+	pw_row.add_child(_password_toggle)
+	_username = _line("Display name (2-24 characters)")
+	_username.max_length = 24
+	_sensitive_controls.append(_username)
+	_content.add_child(_username)
 	_code = _line("Verification code")
 	_code.max_length = 6
 	_sensitive_controls.append(_code)
 	var code_row := HBoxContainer.new()
+	_form_rows.append(code_row)
 	_content.add_child(code_row)
 	_code.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	code_row.add_child(_code)
@@ -149,6 +167,7 @@ func _build() -> void:
 	_remember.button_pressed = false
 	_content.add_child(_remember)
 	var actions := HBoxContainer.new()
+	_form_rows.append(actions)
 	_content.add_child(actions)
 	_submit = _button("LOGIN", _submit_form)
 	_submit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -165,6 +184,16 @@ func _build() -> void:
 	var logout := _button("LOG OUT", _logout)
 	logout.name = "Logout"
 	_content.add_child(logout)
+	_profile_name = _line("Display name")
+	_profile_name.max_length = 24
+	_profile_email = _label("", 10, DungeonTheme.MUTED)
+	_save_name = _button("SAVE NAME", _save_username)
+	_content.add_child(_profile_name)
+	_content.add_child(_profile_email)
+	_content.add_child(_save_name)
+	_content.move_child(_profile_name, 2)
+	_content.move_child(_profile_email, 3)
+	_content.move_child(_save_name, 4)
 	for node in _content.get_children():
 		if node is Control:
 			node.theme = DungeonTheme.THEME
@@ -194,15 +223,23 @@ func _button(value: String, action: Callable) -> Button:
 
 func _refresh() -> void:
 	var logged := AuthManager.authenticated
-	for c in [_email, _password, _confirm, _code, _remember, _submit, _mode_button, _send_code, _password_toggle, _reset_button]:
+	for row in _form_rows:
+		row.visible = not logged
+	for c in [_email, _password, _confirm, _code, _remember, _submit, _mode_button, _send_code, _password_toggle, _reset_button, _username]:
 		c.visible = not logged
 	$Root/Panel/Scroll/Content/Logout.visible = logged
+	_profile_name.visible = logged
+	_profile_email.visible = logged
+	_save_name.visible = logged
 	if logged:
-		_status.text = "Signed in as %s" % AuthManager.mask_email()
+		_profile_email.text = AuthManager.mask_email()
+		_profile_name.editable = not AuthManager.busy
+		_save_name.disabled = AuthManager.busy
 		return
 	_email.editable = not AuthManager.busy
 	_password.editable = not AuthManager.busy
 	_confirm.editable = not AuthManager.busy
+	_username.editable = not AuthManager.busy
 	_code.editable = not AuthManager.busy
 	_remember.disabled = AuthManager.busy
 	_mode_button.disabled = AuthManager.busy
@@ -211,6 +248,7 @@ func _refresh() -> void:
 	_send_code.disabled = AuthManager.busy or _countdown > 0 or _email.text.strip_edges().is_empty()
 	_password_toggle.disabled = AuthManager.busy
 	_confirm.visible = _mode in ["REGISTER", "RESET"]
+	_username.visible = _mode == "REGISTER"
 	_code.visible = _mode in ["REGISTER", "RESET"]
 	_send_code.visible = _mode in ["REGISTER", "RESET"]
 	_remember.visible = _mode in ["LOGIN", "REGISTER"]
@@ -232,7 +270,7 @@ func _cycle_mode() -> void:
 		_pending_code_email = ""
 		_pending_code_purpose = ""
 	_clear_sensitive()
-	_status.text = "Password: 12-128 characters."
+	_status.text = "Password: 12-128 characters; A-Z, a-z and 0-9 are all allowed."
 	_refresh()
 
 func _open_reset() -> void:
@@ -273,13 +311,16 @@ func _submit_form() -> void:
 			return
 		AuthManager.login(addr, _password.text, _remember.button_pressed)
 	elif _mode == "REGISTER":
+		if not _valid_username(_username.text):
+			_status.text = "Display name must be 2-24 letters, numbers, spaces, _ or -."
+			return
 		if _password.text != _confirm.text:
 			_status.text = "Passwords do not match."
 			return
 		if not _valid_challenge(addr, "register"):
 			_status.text = "Request and enter a new registration code."
 			return
-		AuthManager.register_account(addr, _password.text, _challenge_id, _code.text.strip_edges(), _remember.button_pressed)
+		AuthManager.register_account(addr, _password.text, _challenge_id, _code.text.strip_edges(), _remember.button_pressed, _username.text.strip_edges())
 	else:
 		if _password.text.is_empty():
 			_status.text = "Enter a new password."
@@ -322,6 +363,10 @@ func _on_request_finished(operation: String, ok: bool, message: String, data: Di
 			if int(data.get("retry_after", 0)) > 0:
 				_countdown = int(data["retry_after"])
 				_countdown_timer.start()
+	elif operation == "update_profile":
+		_status.text = message if not message.is_empty() else ("Name saved." if ok else (AuthManager.last_error if not AuthManager.last_error.is_empty() else "Could not save display name. Please try again."))
+		if ok:
+			_profile_name.text = AuthManager.username
 	elif operation in ["register", "login", "password_reset", "logout", "restore"]:
 		_status.text = message if not message.is_empty() else ("Success." if ok else AuthManager.last_error)
 		if ok and operation in ["login", "register"]:
@@ -338,6 +383,8 @@ func _on_busy_changed(_busy: bool) -> void:
 
 func _on_session_changed() -> void:
 	if visible:
+		if AuthManager.authenticated:
+			_profile_name.text = AuthManager.username
 		_refresh()
 
 func _on_email_changed(value: String) -> void:
@@ -368,6 +415,23 @@ func _toggle_password() -> void:
 	_password.secret = not show
 	_confirm.secret = not show
 	_password_toggle.text = "HIDE" if show else "SHOW"
+
+func _valid_username(value: String) -> bool:
+	var name := value.strip_edges()
+	if name.length() < 2 or name.length() > 24:
+		return false
+	var regex := RegEx.new()
+	regex.compile("^[\\p{L}\\p{N}_ -]+$")
+	return regex.search(name) != null
+
+func _save_username() -> void:
+	if AuthManager.busy:
+		return
+	if not _valid_username(_profile_name.text):
+		_status.text = "Display name must be 2-24 letters, numbers, spaces, _ or -."
+		return
+	_status.text = "Saving display name…"
+	AuthManager.update_username(_profile_name.text.strip_edges())
 
 func _logout() -> void:
 	if not AuthManager.busy:
