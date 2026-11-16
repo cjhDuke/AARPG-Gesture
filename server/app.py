@@ -29,6 +29,9 @@ from fastapi.responses import JSONResponse
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
+from cloud_saves import CloudError, CloudSaves, Mutation, PutSave
+from request_limits import RequestLimits
+
 LOG = logging.getLogger("psi_hand.auth")
 ACCESS_SECONDS = 900
 REFRESH_SECONDS = 30 * 86400
@@ -171,13 +174,14 @@ class AuthService:
             db.execute("PRAGMA journal_mode=WAL")
             db.executescript(SCHEMA)
             version = db.execute("SELECT version FROM schema_version").fetchone()[0]
-            if version not in (1, 2):
+            if version not in (1, 2, 3):
                 raise RuntimeError("Unsupported database schema")
         if version == 1:
             with self.transaction() as db:
                 db.execute("ALTER TABLE users ADD COLUMN username TEXT NOT NULL DEFAULT ''")
                 db.execute("UPDATE users SET username='Player_' || substr(replace(id,'-',''),1,8)")
                 db.execute("UPDATE schema_version SET version=2")
+        self.cloud = CloudSaves(self)
 
     @contextmanager
     def connection(self):
@@ -392,6 +396,7 @@ class AuthService:
     def cleanup(self):
         now = self.now()
         with self.transaction() as db:
+            self.cloud.cleanup(db)
             db.execute("DELETE FROM mail_outbox WHERE challenge_id IN (SELECT id FROM challenges WHERE expires_at<?)", (now - 86400,))
             db.execute("DELETE FROM challenges WHERE expires_at<?", (now - 86400,))
             db.execute("DELETE FROM sessions WHERE refresh_expires<=?", (now,))
@@ -431,6 +436,11 @@ def create_app(settings: Settings, sender=None, clock=time.time):
 
     app = FastAPI(title="PSI HAND Accounts", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.auth = service
+    app.add_middleware(RequestLimits)
+
+    @app.exception_handler(CloudError)
+    async def cloud_error(_request, exc):
+        return JSONResponse({"error": exc.error}, status_code=exc.status)
 
     @app.exception_handler(ApiError)
     async def api_error(_request, exc):
@@ -445,7 +455,9 @@ def create_app(settings: Settings, sender=None, clock=time.time):
     async def validation_error(_request, exc):
         # Never echo input fields, especially passwords and verification codes.
         fields = {str(part) for item in exc.errors() for part in item.get("loc", ())}
-        if "password" in fields:
+        if _request.url.path.startswith("/api/v1/saves"):
+            error = {"code": "invalid_save_request", "message": "Check the save, base revision, device ID and operation ID."}
+        elif "password" in fields:
             error = {"code": "invalid_password_length", "message": "Password must be 8-128 characters."}
         elif "email" in fields:
             error = {"code": "invalid_email", "message": "Enter a valid email address."}
@@ -459,12 +471,6 @@ def create_app(settings: Settings, sender=None, clock=time.time):
 
     @app.middleware("http")
     async def boundaries(request, call_next):
-        if request.method in ("POST", "PUT", "PATCH"):
-            length = request.headers.get("content-length", "")
-            if not length.isdigit() or int(length) > 8192:
-                return JSONResponse({"error": {"code": "invalid_request", "message": "Request is too large or has no Content-Length."}}, status_code=413)
-            if request.headers.get("content-type", "").split(";")[0].lower() != "application/json":
-                return JSONResponse({"error": {"code": "invalid_request", "message": "JSON is required."}}, status_code=415)
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -508,6 +514,30 @@ def create_app(settings: Settings, sender=None, clock=time.time):
     @app.patch("/api/v1/me")
     def update_profile(body: ProfileRequest, request: Request):
         return service.update_profile(body, request)
+
+    @app.get("/api/v1/saves")
+    def list_saves(request: Request, after: str = ""):
+        return service.cloud.list(request, after)
+
+    @app.get("/api/v1/saves/{save_id}")
+    def get_save(save_id: str, request: Request):
+        return service.cloud.get(request, save_id)
+
+    @app.put("/api/v1/saves/{save_id}")
+    def put_save(save_id: str, body: PutSave, request: Request):
+        return service.cloud.put(request, save_id, body)
+
+    @app.delete("/api/v1/saves/{save_id}")
+    def delete_save(save_id: str, body: Mutation, request: Request):
+        return service.cloud.delete(request, save_id, body)
+
+    @app.get("/api/v1/saves/{save_id}/revisions")
+    def list_revisions(save_id: str, request: Request):
+        return service.cloud.history(request, save_id)
+
+    @app.get("/api/v1/saves/{save_id}/revisions/{revision}")
+    def get_revision(save_id: str, revision: int, request: Request):
+        return service.cloud.history(request, save_id, revision)
 
     return app
 
