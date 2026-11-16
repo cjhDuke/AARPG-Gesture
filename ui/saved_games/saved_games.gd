@@ -300,9 +300,10 @@ func _build_conflict_modal() -> void:
 		var heading := _label(side, 12)
 		heading.add_theme_color_override("font_color", DungeonTheme.GOLD)
 		_place(heading, box, Rect2(8, 5, 178, 18))
-		var body := _label("", 9)
+		var body := _label("", 9, true)
 		body.name = side + "Summary"
 		body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		body.clip_text = true
 		_place(body, box, Rect2(8, 25, 178, 86))
 	var note := _label("Choose which version to keep. KEEP BOTH preserves the local copy under a new ID.", 8)
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -638,14 +639,16 @@ func _open_conflict() -> void:
 func _conflict_summary(record: Dictionary, metadata: Dictionary, local_deleted := false) -> String:
 	var checkpoint: Dictionary = record.get("checkpoint", {}) if record.get("checkpoint", {}) is Dictionary else {}
 	var cloud_summary: Dictionary = metadata.get("summary", {}) if metadata.get("summary", {}) is Dictionary else {}
-	var source := checkpoint if not checkpoint.is_empty() else cloud_summary
-	var stage := str(source.get("stage", source.get("stage_name", "?")))
-	var wave := str(source.get("wave", source.get("wave_index", "?")))
-	var hp := str(source.get("hp", source.get("player_hp", "?")))
-	var saved := str(record.get("saved_at", source.get("time", source.get("saved_at", "?"))))
+	var remote_checkpoint: Dictionary = cloud_summary.get("checkpoint", {}) if cloud_summary.get("checkpoint", {}) is Dictionary else {}
+	var source := checkpoint if not checkpoint.is_empty() else remote_checkpoint
+	var stage := str(int(source.stage) + 1) if source.has("stage") else "?"
+	var wave := str(int(source.wave)) if source.has("wave") else "?"
+	var hp := str(int(source.hp)) if source.has("hp") else "?"
+	var saved := str(record.get("saved_at", cloud_summary.get("saved_at", "?")))
+	var save_name := str(record.get("name", cloud_summary.get("name", "Save")))
 	var deleted := bool(metadata.get("deleted", false))
 	var availability := "LOCAL COPY DELETED" if local_deleted else ("DELETED ON CLOUD" if deleted else "AVAILABLE")
-	return "STAGE %s\nWAVE %s\nHP %s\nSAVED %s\n%s" % [stage, wave, hp, saved, availability]
+	return "%s\nSTAGE %s / WAVE %s\nHP %s\n%s\n%s" % [save_name, stage, wave, hp, saved, availability]
 
 
 func _resolve_conflict(choice: String) -> void:

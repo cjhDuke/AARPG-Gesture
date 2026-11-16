@@ -1,6 +1,6 @@
 # PSI HAND 账号服务
 
-服务提供邮箱验证码注册、邮箱密码登录、密码重置、会话续期、退出账号、自定义显示名和云存档。API 前缀为 `/api/v1`。云存档 schema 3 与 Nginx 80k 请求限制已部署至 `game.dukechen.top`；部署备份、健康检查和公网接口验证记录见 [cloud-saves.md](../docs/ai/cloud-saves.md)。客户端双设备完整 E2E 仍待最终验收，不能据此宣称跨设备闭环已完成。账号接入与验收见 [accounts.md](../docs/ai/accounts.md)。
+服务提供邮箱验证码注册、邮箱密码登录、密码重置、会话续期、退出账号、自定义显示名和云存档。API 前缀为 `/api/v1`。云存档 schema 3 与 Nginx 80k 请求限制已部署至 `game.dukechen.top`，客户端完成双客户端互传、离线重启、冲突及删除验证。部署备份、健康检查、生产 E2E 与最终包证据见 [cloud-saves.md](../docs/ai/cloud-saves.md)。账号接入与验收见 [accounts.md](../docs/ai/accounts.md)。
 
 注册可携带 `username`（2～24 字，支持 Unicode 字母、数字、空格、下划线和连字符，允许重名）；`PATCH /api/v1/me` 使用 Bearer 会话修改当前账号显示名，登录仍用邮箱。schema 1 自动迁移到 2，保留原密码哈希和会话，旧账号/旧客户端会获得默认显示名。密码原样处理、区分大小写，支持数字与大小写字母；注册和密码重置长度为 8～128 字符，登录继续接受 1～128 字符以兼容旧账号。
 
