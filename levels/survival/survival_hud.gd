@@ -160,19 +160,20 @@ func set_bag( count : int, capacity : int ) -> void:
 	if _item_buttons.is_empty():
 		for kind : int in [ Pickup.Kind.APPLE, Pickup.Kind.POTION ]:
 			var button := Button.new()
+			# 先设置紧凑样式再放图标，避免默认按钮边距提前撑高且不自动缩回。
+			button.add_theme_font_size_override( "font_size", 8 )
+			for state in [ "normal", "hover", "pressed", "hover_pressed", "disabled", "focus" ]:
+				button.add_theme_stylebox_override( state, StyleBoxEmpty.new() )
 			var tex := AtlasTexture.new()
 			tex.atlas = Pickup.ITEMS_TEXTURE
 			tex.region = Pickup.REGIONS[kind].grow( -8 )
 			button.icon = tex
-			button.add_theme_font_size_override( "font_size", 8 )
-			button.add_theme_stylebox_override( "normal", StyleBoxEmpty.new() )
-			button.add_theme_stylebox_override( "disabled", StyleBoxEmpty.new() )
-			button.position = Vector2( 354 + ( 46 if kind == Pickup.Kind.POTION else 0 ), 30 )
-			button.size = Vector2( 44, 16 )
+			button.position = Vector2( 356 + ( 46 if kind == Pickup.Kind.POTION else 0 ), 30 )
 			button.focus_mode = Control.FOCUS_NONE
 			button.tooltip_text = "Apple (Q): +1 HP" if kind == Pickup.Kind.APPLE else "Potion (E): +2 HP, PSI MAX"
 			button.pressed.connect( item_used.emit.bind( kind ) )
 			gameplay.add_child( button )
+			button.size = Vector2( 42, 16 )
 			_item_buttons[kind] = button
 	var potions : int = int( bag_provider.call() ) if bag_provider.is_valid() else 0
 	_item_buttons[Pickup.Kind.APPLE].text = "Q %d/%d" % [ count, capacity ]
