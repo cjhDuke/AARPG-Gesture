@@ -43,6 +43,9 @@ var _run_id : int = 0
 ## _advance_stage 协程正在跑（淡出 / 换关 / 淡入）；重开和练习场跳关会递增 _run_id 作废它，并把本标记清掉
 var _stage_changing : bool = false
 var _checkpoint: Dictionary = {}
+## 只在玩家可操作的正式流程累计时间；开场与强制切关横幅不计。
+var _run_clock_started := false
+var _stage_clock_held := false
 
 
 func _ready() -> void:
@@ -68,6 +71,8 @@ func _ready() -> void:
 	PauseMenu.bag_provider = _bag_info
 	PauseMenu.item_user = use_bag_item
 	PauseMenu.restart_handler = _start_run
+	PauseMenu.shown.connect(_pause_run_clock)
+	PauseMenu.hidden.connect(_sync_run_clock)
 	spawner.enemy_destroyed_at.connect( loot.handle_enemy_destroyed )
 	spawner.enemy_killed.connect( _on_enemy_killed )
 	spawner.wave_cleared.connect( _on_wave_cleared )
@@ -82,6 +87,8 @@ func _ready() -> void:
 
 
 func _free_level() -> void:
+	LeaderboardManager.abandon_run()
+	RunStats.abandon_run()
 	PauseMenu.clear_level_hooks()
 	_clear_death_fx()
 	_clear_rewards()
@@ -96,6 +103,10 @@ func _free_level() -> void:
 ## 开始（或重新开始）一局
 func _start_run() -> void:
 	PlayerHud.show()
+	RunStats.begin_run()
+	LeaderboardManager.begin_run()
+	_run_clock_started = false
+	_stage_clock_held = false
 	_checkpoint = {}
 	_clear_death_fx()
 	_clear_rewards()
@@ -125,7 +136,26 @@ func _start_run() -> void:
 	run_started.emit()
 
 
+func _process(_delta: float) -> void:
+	_sync_run_clock()
+
+
+func _pause_run_clock() -> void:
+	RunStats.set_timing_active(false)
+
+
+func _sync_run_clock() -> void:
+	var active := _run_clock_started and not _ended and not _stage_changing and not _stage_clock_held
+	active = active and not LevelManager.is_loading_level and not get_tree().paused
+	if is_instance_valid(_boss) and _boss.phase == WizardBoss.Phase.ENTER:
+		active = false
+	RunStats.set_timing_active(active)
+
+
 func _begin_wave() -> void:
+	LeaderboardManager.seal_run()
+	_run_clock_started = true
+	_stage_clock_held = false
 	if _is_boss_stage():
 		_begin_boss()
 		return
@@ -136,6 +166,7 @@ func _begin_wave() -> void:
 	spawner.start_wave( _stage_data["waves"][wave - 1] )
 	_update_status()
 	_autosave_wave.call_deferred(_run_id)
+	_sync_run_clock()
 
 
 ## 切到第 n 关（只换数据、图块地图和音乐，不碰主角和背包）
@@ -170,10 +201,12 @@ func _begin_boss() -> void:
 	_boss = WizardBoss.spawn( self, spawner, controller )
 	_boss.hp_changed.connect( hud.set_boss_hp )
 	_boss.defeated.connect( _on_boss_defeated )
+	_boss.segment_cleared.connect(_on_boss_segment_cleared)
 	hud.show_boss_bar()
 	hud.set_boss_hp( 1, _boss.seg_hp, _boss.segment_hp )
 	_update_status()
 	_autosave_wave.call_deferred(_run_id)
+	_sync_run_clock()
 
 
 func _autosave_wave(run_id: int) -> void:
@@ -209,6 +242,13 @@ func _capture_checkpoint() -> void:
 
 
 func _restore_checkpoint(data: Dictionary) -> void:
+	var completed := int(data["stage"]) * 3
+	if data.get("kind", "waves") != "boss":
+		completed += int(data["wave"]) - 1
+	RunStats.begin_run(true, completed)
+	LeaderboardManager.begin_run(true)
+	_run_clock_started = false
+	_stage_clock_held = false
 	_run_id += 1
 	wave_timer.stop()
 	_load_stage(int(data["stage"]))
@@ -225,7 +265,8 @@ func _restore_checkpoint(data: Dictionary) -> void:
 	controller.enabled = true
 	loot.restore_checkpoint_state(data["loot"])
 	kills = int(data["kills"])
-	RunStats.best_kills = maxi(RunStats.best_kills, kills)
+	RunStats.update_best_kills(kills)
+	_report_stats_error()
 	wave = int(data["wave"]) - 1 if not _is_boss_stage() else 0
 	_begin_wave()
 	run_started.emit()
@@ -236,6 +277,14 @@ func _on_boss_defeated() -> void:
 		return
 	_clear_boss()
 	_end_run( true )
+
+
+func _on_boss_segment_cleared(segment: int) -> void:
+	if _ended:
+		return
+	RunStats.record_milestone(6 + segment)
+	if segment == WizardBoss.ROUNDS:
+		RunStats.set_timing_active(false)
 
 
 ## 清掉 Boss 和它创建的一切（巫师、火把、光束、特效、血条；小怪和投射物由 spawner.clear() 清）。可重复调用
@@ -262,13 +311,20 @@ func _is_last_stage() -> bool:
 
 func _on_enemy_killed() -> void:
 	kills += 1
-	RunStats.best_kills = maxi( RunStats.best_kills, kills )
+	RunStats.update_best_kills(kills)
+	_report_stats_error()
 	_update_status()
+
+
+func _report_stats_error() -> void:
+	if not RunStats.last_error.is_empty():
+		hud.show_save_notice("BEST KILLS NOT SAVED\n" + RunStats.last_error, true)
 
 
 func _on_wave_cleared() -> void:
 	if _ended:
 		return
+	RunStats.record_milestone(stage * 3 + wave)
 	if wave >= _wave_total() and _is_last_stage():
 		_end_run( true )
 	else:
@@ -342,6 +398,7 @@ func _choose_upgrade() -> void:
 	for i in mini( 3, candidates.size() ):
 		picks.append( candidates[i] )
 	_clear_upgrade_menu()
+	RunStats.set_timing_active(false)
 	_upgrade_menu = UpgradeMenu.new()
 	_upgrade_menu.setup( picks, controller.owned_levels() )
 	add_child( _upgrade_menu )
@@ -351,6 +408,7 @@ func _choose_upgrade() -> void:
 		return
 	_upgrade_menu = null
 	var lv := controller.add_upgrade( picked )
+	_sync_run_clock()
 	Pickup.show_float_text( self, _player.global_position + Vector2( 0, -48 ), "%s LV %d" % [ Upgrades.display_name( picked ), lv ] )
 
 
@@ -365,6 +423,8 @@ func _clear_upgrade_menu() -> void:
 ## 主角血量、背包、掉落统计都留在原节点上，不重置。
 func _advance_stage() -> void:
 	_stage_changing = true
+	_stage_clock_held = true
+	RunStats.set_timing_active(false)
 	var id := _run_id
 	await _advance_stage_flow()
 	# 流程被重开 / 跳关作废时，标志已由那边清掉，不要覆盖
@@ -405,6 +465,10 @@ func _advance_stage_flow() -> void:
 func debug_goto_stage( n : int ) -> void:
 	if _ended:
 		return
+	# 调试入口永远不能保留正常局的统计资格。
+	RunStats.abandon_run()
+	RunStats.begin_run(true, n * 3)
+	LeaderboardManager.begin_run(true)
 	_run_id += 1
 	if _stage_changing:
 		SceneTransition.reset()
@@ -432,6 +496,9 @@ func debug_goto_stage( n : int ) -> void:
 func debug_clear_wave() -> void:
 	if _ended:
 		return
+	RunStats.abandon_run()
+	RunStats.begin_run(true, stage * 3 + maxi(wave - 1, 0))
+	LeaderboardManager.begin_run(true)
 	if is_instance_valid( _boss ):
 		# Boss 关：K = 立即碎盾进入破绽阶段
 		_boss.debug_break_shield()
@@ -492,6 +559,7 @@ func _on_player_died() -> void:
 	if _ended:
 		return
 	_ended = true
+	RunStats.set_timing_active(false)
 	wave_timer.stop()
 	_clear_rewards()
 	if is_instance_valid( _boss ):
@@ -520,6 +588,9 @@ func _clear_death_fx() -> void:
 
 func _end_run( victory : bool ) -> void:
 	_ended = true
+	RunStats.finish_run(victory, kills)
+	LeaderboardManager.finish_run(RunStats.get_last_result())
+	_report_stats_error()
 	wave_timer.stop()
 	_clear_rewards()
 	controller.enabled = false

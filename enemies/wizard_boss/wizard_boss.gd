@@ -13,6 +13,8 @@ class_name WizardBoss extends Node2D
 
 signal hp_changed( round_no : int, seg_hp : int, seg_max : int )
 signal defeated
+## 每段血首次打空时立即发出（1..3）；不等待最后的死亡演出。
+signal segment_cleared(segment: int)
 
 enum Phase { ENTER, SHIELD, STUN, DYING, DEAD }
 
@@ -278,6 +280,7 @@ func _block_feedback() -> void:
 
 
 func _segment_cleared() -> void:
+	segment_cleared.emit(round_idx + 1)
 	if round_idx >= ROUNDS - 1:
 		_die()
 		return

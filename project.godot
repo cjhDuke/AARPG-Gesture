@@ -11,6 +11,7 @@ config_version=5
 [application]
 
 config/name="AARPG-Gesture"
+config/version="1.1.0"
 run/main_scene="uid://bwflt7uax5m6i"
 config/features=PackedStringArray("4.6", "Forward Plus")
 boot_splash/show_image=false
@@ -33,6 +34,7 @@ CloudSaveManager="*res://autoload/cloud_save_manager.gd"
 SavedGames="*res://ui/saved_games/saved_games.gd"
 PauseMenu="*uid://fft2clkfyt2x"
 RunStats="*res://autoload/run_stats.gd"
+LeaderboardManager="*res://autoload/leaderboard_manager.gd"
 GestureInput="*res://autoload/gesture_input.gd"
 
 [display]

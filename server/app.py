@@ -23,7 +23,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
 from cryptography.fernet import Fernet
 from email_validator import EmailNotValidError, validate_email
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import httpx
@@ -31,6 +31,8 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from cloud_saves import CloudError, CloudSaves, Mutation, PutSave
 from request_limits import RequestLimits
+from leaderboards import LeaderboardError, Leaderboards, RunResult, StartRun, StatsUpdate
+from leaderboards import TABLES as LEADERBOARD_TABLES
 
 LOG = logging.getLogger("psi_hand.auth")
 ACCESS_SECONDS = 900
@@ -174,7 +176,7 @@ class AuthService:
             db.execute("PRAGMA journal_mode=WAL")
             db.executescript(SCHEMA)
             version = db.execute("SELECT version FROM schema_version").fetchone()[0]
-            if version not in (1, 2, 3):
+            if version not in (1, 2, 3, 4):
                 raise RuntimeError("Unsupported database schema")
         if version == 1:
             with self.transaction() as db:
@@ -182,6 +184,13 @@ class AuthService:
                 db.execute("UPDATE users SET username='Player_' || substr(replace(id,'-',''),1,8)")
                 db.execute("UPDATE schema_version SET version=2")
         self.cloud = CloudSaves(self)
+        # Each migration step commits independently; stage 4 itself is atomic.
+        with self.transaction() as db:
+            if db.execute("SELECT version FROM schema_version").fetchone()[0] == 3:
+                for statement in LEADERBOARD_TABLES:
+                    db.execute(statement)
+                db.execute("UPDATE schema_version SET version=4")
+        self.leaderboards = Leaderboards(self)
 
     @contextmanager
     def connection(self):
@@ -397,6 +406,8 @@ class AuthService:
         now = self.now()
         with self.transaction() as db:
             self.cloud.cleanup(db)
+            self.leaderboards.cleanup(db)
+            db.execute("DELETE FROM rate_limits WHERE window<? AND bucket LIKE 'leaderboard:ingress:%'", (now // 60 - 1,))
             db.execute("DELETE FROM mail_outbox WHERE challenge_id IN (SELECT id FROM challenges WHERE expires_at<?)", (now - 86400,))
             db.execute("DELETE FROM challenges WHERE expires_at<?", (now - 86400,))
             db.execute("DELETE FROM sessions WHERE refresh_expires<=?", (now,))
@@ -442,6 +453,10 @@ def create_app(settings: Settings, sender=None, clock=time.time):
     async def cloud_error(_request, exc):
         return JSONResponse({"error": exc.error}, status_code=exc.status)
 
+    @app.exception_handler(LeaderboardError)
+    async def leaderboard_error(_request, exc):
+        return JSONResponse({"error": exc.error}, status_code=exc.status)
+
     @app.exception_handler(ApiError)
     async def api_error(_request, exc):
         error = {"code": exc.code, "message": exc.message}
@@ -455,7 +470,11 @@ def create_app(settings: Settings, sender=None, clock=time.time):
     async def validation_error(_request, exc):
         # Never echo input fields, especially passwords and verification codes.
         fields = {str(part) for item in exc.errors() for part in item.get("loc", ())}
-        if _request.url.path.startswith("/api/v1/saves"):
+        if _request.url.path == "/api/v1/me/stats":
+            error = {"code": "invalid_stats_request", "message": "Submit a valid non-negative integer for best kills."}
+        elif _leaderboard_path(_request.url.path):
+            error = {"code": "invalid_leaderboard_request", "message": "Check the run, rules, version and milestone times."}
+        elif _request.url.path.startswith("/api/v1/saves"):
             error = {"code": "invalid_save_request", "message": "Check the save, base revision, device ID and operation ID."}
         elif "password" in fields:
             error = {"code": "invalid_password_length", "message": "Password must be 8-128 characters."}
@@ -469,9 +488,25 @@ def create_app(settings: Settings, sender=None, clock=time.time):
             error = {"code": "invalid_input", "message": "Check the submitted fields and try again."}
         return JSONResponse({"error": error}, status_code=422)
 
+    def _leaderboard_path(path):
+        return (path == "/api/v1/leaderboards" or path.startswith("/api/v1/ranked-runs")
+                or path in ("/api/v1/me/leaderboard", "/api/v1/me/stats"))
+
+    def _leaderboard_attempt(source):
+        # Count attempts before JSON validation, independently of business rollback.
+        with service.transaction() as db:
+            service.rate_limit(db, "leaderboard:ingress:" + service.private_id(source), 60, 300)
+
     @app.middleware("http")
     async def boundaries(request, call_next):
-        response = await call_next(request)
+        response = None
+        if _leaderboard_path(request.url.path):
+            try:
+                await asyncio.to_thread(_leaderboard_attempt, ip(request))
+            except ApiError as exc:
+                response = await api_error(request, exc)
+        if response is None:
+            response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         return response
@@ -514,6 +549,31 @@ def create_app(settings: Settings, sender=None, clock=time.time):
     @app.patch("/api/v1/me")
     def update_profile(body: ProfileRequest, request: Request):
         return service.update_profile(body, request)
+
+    @app.post("/api/v1/ranked-runs", status_code=201)
+    def start_ranked_run(body: StartRun, request: Request):
+        return service.leaderboards.start(request, body)
+
+    @app.put("/api/v1/ranked-runs/{run_id}/result")
+    def finish_ranked_run(run_id: str, body: RunResult, request: Request):
+        return service.leaderboards.finish(request, run_id, body)
+
+    @app.get("/api/v1/leaderboards")
+    def list_leaderboard(request: Request, ruleset_id: str = Query(default="survival_v1", max_length=64),
+                         cursor: str = Query(default="", max_length=512)):
+        return service.leaderboards.list_board(request, ruleset_id, cursor)
+
+    @app.get("/api/v1/me/leaderboard")
+    def personal_leaderboard(request: Request, ruleset_id: str = Query(default="survival_v1", max_length=64)):
+        return service.leaderboards.personal(request, ruleset_id)
+
+    @app.get("/api/v1/me/stats")
+    def get_player_stats(request: Request):
+        return service.leaderboards.get_stats(request)
+
+    @app.put("/api/v1/me/stats")
+    def update_player_stats(body: StatsUpdate, request: Request):
+        return service.leaderboards.put_stats(request, body)
 
     @app.get("/api/v1/saves")
     def list_saves(request: Request, after: str = ""):

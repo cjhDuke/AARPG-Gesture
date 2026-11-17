@@ -12,6 +12,8 @@ Godot --headless --audio-driver Dummy --path <project> --script <project>/tests/
 
 先在 `.stage1_checks/cloud-test-config.json` 填入两个专用临时账号的 `email/password/owner` 与 `other_email/other_password/other_owner`（owner 为服务端用户 UUID），以及 `base_url` 和项目内 `.stage1_checks/cloud-e2e` 的绝对路径 `state_dir`。应在空云档账号上按顺序执行；`--fresh` 只清本测试的本机 A/B 目录，不清服务器。
 
+runner 将 `base_url` 作为调试客户端的 `--auth-api` 参数，隔离本机联调应填写回环测试服务地址。不要省略地址后误用默认生产服务。
+
 ```text
 python tests/cloud/run_e2e.py --godot <Godot.exe> --fresh
 ```
