@@ -102,27 +102,32 @@ anchor_right = 0.5
 offset_left = -80.0
 offset_top = 112.0
 offset_right = 80.0
-offset_bottom = 225.0
+offset_bottom = 214.0
 grow_horizontal = 2
-theme_override_constants/separation = 3
+theme_override_constants/separation = 2
 
 [node name="Button_start" type="Button" parent="CanvasLayer/Control/Menu"]
-custom_minimum_size = Vector2(0, 26)
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 text = "START"
 
 [node name="Button_saved" type="Button" parent="CanvasLayer/Control/Menu"]
-custom_minimum_size = Vector2(0, 26)
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 text = "SAVED GAMES"
 
+[node name="Button_leaderboard" type="Button" parent="CanvasLayer/Control/Menu"]
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+text = "LEADERBOARD"
+
 [node name="Button_settings" type="Button" parent="CanvasLayer/Control/Menu"]
-custom_minimum_size = Vector2(0, 26)
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 text = "SETTINGS"
 
 [node name="Button_quit" type="Button" parent="CanvasLayer/Control/Menu"]
-custom_minimum_size = Vector2(0, 26)
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 text = "QUIT"
 
