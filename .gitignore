@@ -6,6 +6,8 @@ build/
 bin/
 *.tmp
 .stage1_checks/
+.stage2_checks/
+.stage3_checks/
 server/.venv/
 server/.env
 server/*.sqlite*

@@ -45,6 +45,15 @@ var _storage_thread: Thread
 var _storage_result: Dictionary = {}
 var _storage_generation := 0
 
+const SERVICE_PATHS := {
+	"POST /ranked-runs": true,
+	"PUT /ranked-runs/{id}/result": true,
+	"GET /leaderboards": true,
+	"GET /me/leaderboard": true,
+	"GET /me/stats": true,
+	"PUT /me/stats": true,
+}
+
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -117,6 +126,70 @@ func refresh_for_cloud() -> bool:
 		return false
 	_begin_refresh("", {}, _remember)
 	return true
+
+
+func get_api_base() -> String:
+	return _api_base
+
+
+func send_service_request(http: HTTPRequest, path: String, method: int, payload: Dictionary, owner_id: String = "", authorized: bool = true) -> int:
+	if LevelManager.practice_mode:
+		return ERR_UNAVAILABLE
+	if http == null or not _is_service_route(path, method, authorized):
+		return ERR_INVALID_PARAMETER
+	if authorized:
+		if not authenticated or owner_id.is_empty() or user_id.to_lower() != owner_id.to_lower():
+			return ERR_UNAUTHORIZED
+		if busy or _storage_thread != null:
+			return ERR_BUSY
+		if _access_expires_at <= int(Time.get_unix_time_from_system()) + REFRESH_SKEW_SECONDS:
+			if not busy:
+				_begin_refresh("", {}, _remember)
+			return ERR_BUSY
+	if http.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		return ERR_BUSY
+	http.max_redirects = 0
+	var headers := PackedStringArray(["Content-Type: application/json", "Accept: application/json"])
+	if authorized:
+		headers.append("Authorization: Bearer " + _access_token)
+	var body := "" if method == HTTPClient.METHOD_GET else JSON.stringify(payload)
+	return http.request(_api_base + path, headers, method, body)
+
+
+func refresh_service_session(owner_id: String) -> int:
+	if LevelManager.practice_mode:
+		return ERR_UNAVAILABLE
+	if busy or _storage_thread != null:
+		return ERR_BUSY
+	if not authenticated or user_id.to_lower() != owner_id.to_lower() or _refresh_token.is_empty():
+		return ERR_UNAUTHORIZED
+	_begin_refresh("", {}, _remember)
+	return OK
+
+
+func _is_service_route(path: String, method: int, authorized: bool) -> bool:
+	var verb: String = "GET" if method == HTTPClient.METHOD_GET else ""
+	if method == HTTPClient.METHOD_POST:
+		verb = "POST"
+	elif method == HTTPClient.METHOD_PUT:
+		verb = "PUT"
+	if not authorized and (method != HTTPClient.METHOD_GET or not path.begins_with("/leaderboards")):
+		return false
+	var route := path.split("?", true, 1)[0]
+	if path.contains("?"):
+		if route == "/leaderboards":
+			if not RegEx.create_from_string("^/leaderboards\\?(ruleset_id=[A-Za-z0-9_]+(&cursor=[A-Za-z0-9_.~-]+)?|cursor=[A-Za-z0-9_.~-]+(&ruleset_id=[A-Za-z0-9_]+)?)$").search(path):
+				return false
+		elif route == "/me/leaderboard" and authorized and path == "/me/leaderboard?ruleset_id=survival_v1":
+			pass
+		else:
+			return false
+	if route.begins_with("/ranked-runs/") and route.ends_with("/result") and method == HTTPClient.METHOD_PUT:
+		var run_id := route.trim_prefix("/ranked-runs/").trim_suffix("/result")
+		return RegEx.create_from_string("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$").search(run_id) != null
+	if route == "/leaderboards":
+		return method == HTTPClient.METHOD_GET
+	return SERVICE_PATHS.has(verb + " " + route)
 
 
 func login(target_email: String, password: String, remember: bool) -> void:

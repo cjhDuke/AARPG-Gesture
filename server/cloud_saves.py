@@ -67,7 +67,7 @@ class CloudSaves:
         with auth.transaction() as db:
             for statement in TABLES:
                 db.execute(statement)
-            db.execute("UPDATE schema_version SET version=3")
+            db.execute("UPDATE schema_version SET version=3 WHERE version<3")
 
     def _id(self, save_id):
         if not SAVE_ID.fullmatch(save_id):
