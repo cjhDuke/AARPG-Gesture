@@ -87,6 +87,7 @@ func _ready() -> void:
 
 
 func _free_level() -> void:
+	LeaderboardManager.abandon_run()
 	RunStats.abandon_run()
 	PauseMenu.clear_level_hooks()
 	_clear_death_fx()
@@ -102,6 +103,7 @@ func _free_level() -> void:
 ## 开始（或重新开始）一局
 func _start_run() -> void:
 	RunStats.begin_run()
+	LeaderboardManager.begin_run()
 	_run_clock_started = false
 	_stage_clock_held = false
 	_checkpoint = {}
@@ -150,6 +152,7 @@ func _sync_run_clock() -> void:
 
 
 func _begin_wave() -> void:
+	LeaderboardManager.seal_run()
 	_run_clock_started = true
 	_stage_clock_held = false
 	if _is_boss_stage():
@@ -242,6 +245,7 @@ func _restore_checkpoint(data: Dictionary) -> void:
 	if data.get("kind", "waves") != "boss":
 		completed += int(data["wave"]) - 1
 	RunStats.begin_run(true, completed)
+	LeaderboardManager.begin_run(true)
 	_run_clock_started = false
 	_stage_clock_held = false
 	_run_id += 1
@@ -463,6 +467,7 @@ func debug_goto_stage( n : int ) -> void:
 	# 调试入口永远不能保留正常局的统计资格。
 	RunStats.abandon_run()
 	RunStats.begin_run(true, n * 3)
+	LeaderboardManager.begin_run(true)
 	_run_id += 1
 	if _stage_changing:
 		SceneTransition.reset()
@@ -492,6 +497,7 @@ func debug_clear_wave() -> void:
 		return
 	RunStats.abandon_run()
 	RunStats.begin_run(true, stage * 3 + maxi(wave - 1, 0))
+	LeaderboardManager.begin_run(true)
 	if is_instance_valid( _boss ):
 		# Boss 关：K = 立即碎盾进入破绽阶段
 		_boss.debug_break_shield()
@@ -582,6 +588,7 @@ func _clear_death_fx() -> void:
 func _end_run( victory : bool ) -> void:
 	_ended = true
 	RunStats.finish_run(victory, kills)
+	LeaderboardManager.finish_run(RunStats.get_last_result())
 	_report_stats_error()
 	wave_timer.stop()
 	_clear_rewards()

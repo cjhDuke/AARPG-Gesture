@@ -1,7 +1,8 @@
 extends Node
-## 本地个人击杀最佳与单局进度计时。阶段 1 不提交线上排行榜。
+## 按身份持久化击杀最佳与单局进度计时；由 LeaderboardManager 同步线上统计。
 
 signal stats_changed()
+signal personal_best_changed(owner_id: String, value: int)
 
 const RULESET_ID := "survival_v1"
 const DATA_VERSION := 1
@@ -69,6 +70,7 @@ func update_best_kills(value: int) -> void:
 	if _write_record(_run_identity, value):
 		_best_by_identity[_run_identity] = value
 		_new_best = true
+		personal_best_changed.emit(_run_identity, value)
 		stats_changed.emit()
 
 
@@ -124,6 +126,7 @@ func finish_run(victory: bool, kills: int) -> Dictionary:
 		if _write_record(_run_identity, _kills):
 			_best_by_identity[_run_identity] = _kills
 			_new_best = true
+			personal_best_changed.emit(_run_identity, _kills)
 	_last_result = _make_snapshot(victory)
 	_run_active = false
 	stats_changed.emit()
@@ -144,6 +147,38 @@ func get_run_snapshot() -> Dictionary:
 
 func get_last_result() -> Dictionary:
 	return _last_result.duplicate(true)
+
+
+func get_run_owner_id() -> String:
+	return _run_identity if _run_active else _current_identity()
+
+
+func get_personal_best(owner_id: String = "") -> int:
+	var identity := owner_id
+	if identity.is_empty():
+		identity = _run_identity if _run_active else _current_identity()
+	if identity == "guest" or not _is_uuid(identity):
+		return 0 if identity != "guest" else _best_for_identity("guest")
+	return _best_for_identity(identity.to_lower())
+
+
+func merge_remote_best(owner_id: String, value: int) -> bool:
+	last_error = ""
+	if LevelManager.practice_mode or not AuthManager.authenticated or not _is_uuid(owner_id) or owner_id.to_lower() != AuthManager.user_id.to_lower():
+		last_error = "Remote statistics do not belong to the active account."
+		return false
+	if value < 0 or value > MAX_KILLS:
+		last_error = "Remote personal best is invalid."
+		return false
+	var identity := owner_id.to_lower()
+	var previous := _best_for_identity(identity)
+	if value <= previous:
+		return true
+	if not _write_record(identity, value):
+		return false
+	_best_by_identity[identity] = value
+	stats_changed.emit()
+	return true
 
 
 func format_time(ms: int) -> String:
@@ -185,6 +220,7 @@ func _make_snapshot(victory: bool) -> Dictionary:
 		"ranking_reason": reason,
 		"ruleset_id": RULESET_ID,
 		"player_name": _run_name,
+		"owner_id": _run_identity,
 	}
 
 

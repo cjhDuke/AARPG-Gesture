@@ -1,12 +1,12 @@
 # PSI HAND 账号、云存档与排行榜服务
 
-阶段 1 提供邮箱验证码注册、邮箱密码登录、密码重置、会话续期、退出账号和自定义显示名。API 前缀为 `/api/v1`。阶段 2A 已新增云存档服务端候选与隔离验证，**尚未部署或接入游戏**；协议、验证和部署前提见 [cloud-saves.md](../docs/ai/cloud-saves.md)。账号接入与验收记录见 [accounts.md](../docs/ai/accounts.md)。
+服务提供邮箱验证码注册、邮箱密码登录、密码重置、会话续期、退出账号和自定义显示名，API 前缀为 `/api/v1`。云存档后台已部署，游戏端云档同步尚未接入；协议见 [cloud-saves.md](../docs/ai/cloud-saves.md)。账号验收见 [accounts.md](../docs/ai/accounts.md)。
 
-排行榜阶段 2 新增独立的个人 BEST、24 小时排名凭证、成绩幂等提交、公开分页榜和个人排名接口，协议见 [leaderboard-server.md](../docs/ai/leaderboard-server.md)。**同为待审核的服务端候选，不是已上线功能；当前游戏仍未上传成绩。** 数据库新增 schema 4，账号与云档旧数据保留，云档初始化不得把更高版本重置为 3。部署须同时包含 `leaderboards.py` 及原有云档相关模块，先做一致性数据库备份和恢复验证；仅替换旧 app.py 不能回滚 schema。
+排行榜于 2026-11-17 上线：个人 BEST、24 小时排名凭证、成绩幂等提交、公开分页榜和个人排名接口已接通 Windows 1.1.0。协议见 [leaderboard-server.md](../docs/ai/leaderboard-server.md)，客户端和验收见 [leaderboard-online.md](../docs/ai/leaderboard-online.md)。数据库 schema 4，账号与云档旧数据保留。部署须同时包含 `leaderboards.py` 及云档相关模块，先做一致性数据库备份和恢复验证；仅替换旧 app.py 不能回滚 schema。
 
 注册可携带 `username`（2～24 字，支持 Unicode 字母、数字、空格、下划线和连字符，允许重名）；`PATCH /api/v1/me` 使用 Bearer 会话修改当前账号显示名，登录仍用邮箱。schema 1 自动迁移到 2，保留原密码哈希和会话，旧账号/旧客户端会获得默认显示名。密码原样处理、区分大小写，支持数字与大小写字母；注册和密码重置长度为 8～128 字符，登录继续接受 1～128 字符以兼容旧账号。
 
-候选云档服务会将 schema 1/2 升级到 3。发布时必须同时包含 `cloud_saves.py / save_payload.py / request_limits.py`；旧账号版不能直接读取升级后的 schema 3，部署与回滚需先处理数据库一致性备份。云档接口仅接受当前账号会话，使用 revision 条件写入和 operation_id 幂等；账号请求仍限制 8 KiB，云档 PUT 请求封装限制 80 KiB、规范载荷限制 64 KiB。Nginx 的 80k 候选配置须验证后加载。
+云档初始化将 schema 1/2 升到 3，排行榜初始化再升到 4；重复初始化不会降级。发布必须包含 `cloud_saves.py / save_payload.py / request_limits.py`；部署与回滚使用一致性数据库备份。云档接口使用 revision 条件写入和 operation_id 幂等；账号与排行榜请求限 8 KiB，云档 PUT 封装限 80 KiB、规范载荷限 64 KiB。
 
 请求字段校验错误（HTTP 422）返回不包含提交字段值的固定错误码：`invalid_password_length`（密码长度不符，固定提示 8-128 字符）、`invalid_email`（邮箱格式无效）、`invalid_code_input`（验证码或挑战 ID 格式无效）、`invalid_username`（显示名不符合规则）；其他字段错误使用 `invalid_input`。验证码内容错误或过期仍返回 `invalid_code`。
 

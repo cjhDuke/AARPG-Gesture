@@ -44,6 +44,7 @@ func _run() -> void:
 		get_tree().quit(2)
 		return
 	AuthManager.set_process(false)
+	LeaderboardManager.set("network_enabled", false)
 	AuthManager.startup_prompt_handled = true
 	GestureInput.set_process(false)
 	AudioServer.set_bus_mute(0, true)
@@ -77,7 +78,7 @@ func _run() -> void:
 	var panel: LeaderboardPanel = title._leaderboard
 	_check(panel.is_open and title._leaderboard_open, "Title opens leaderboard")
 	_check(title._account_button.disabled and title.button_start.disabled, "Background controls disabled")
-	_check(panel._status.text == "ONLINE LEADERBOARD COMING SOON", "Production panel has honest empty state")
+	_check(panel._status.text != "ONLINE LEADERBOARD COMING SOON", "Production panel no longer uses the offline placeholder")
 	_check(panel._preview_rows.is_empty(), "No fake rankings in production")
 	_check(get_tree().paused, "Title pause preserved while modal open")
 	title.open_settings()
@@ -145,6 +146,59 @@ func _run() -> void:
 	_check(get_tree().paused and not hud.retry_button.disabled, "Leaderboard returns to paused result")
 	_check(get_viewport().gui_get_focus_owner() == hud.leaderboard_button, "Result focus restored")
 	hud.hide_result()
+	var manager := LeaderboardManager
+	AuthManager.authenticated = true
+	AuthManager.user_id = "11111111" + "-1111-4111-8111-" + "111111111111"
+	AuthManager.username = "同名玩家"
+	AuthManager.session_changed.emit()
+	var public_rows: Array = []
+	for i in 20:
+		public_rows.append({"entry_id": "global-%d" % i, "rank": i + 1, "player_name": "同名玩家" if i == 0 else "公开玩家%d" % i, "progress": 9, "rank_time_ms": 300000 + i})
+	manager._board = {"entries": public_rows, "loading": false, "error": "", "next_cursor": "next-page", "cached": false, "updated_at": 1800000000}
+	manager._personal = {
+		"best": {"entry_id": "personal-entry-27", "rank": 27, "player_name": "同名玩家", "progress": 8, "rank_time_ms": 321000},
+		"neighbors": [
+			{"entry_id": "near-25", "rank": 25, "player_name": "附近玩家25", "progress": 8, "rank_time_ms": 319000},
+			{"entry_id": "near-26", "rank": 26, "player_name": "同名玩家", "progress": 8, "rank_time_ms": 320000},
+			{"entry_id": "personal-entry-27", "rank": 27, "player_name": "同名玩家", "progress": 8, "rank_time_ms": 321000},
+			{"entry_id": "near-28", "rank": 28, "player_name": "附近玩家28", "progress": 8, "rank_time_ms": 322000},
+			{"entry_id": "near-29", "rank": 29, "player_name": "附近玩家29", "progress": 8, "rank_time_ms": 323000}
+		],
+		"loading": false, "error": ""
+	}
+	var online_panel: LeaderboardPanel = hud._leaderboard
+	online_panel.open()
+	_check(not online_panel._near_button.disabled, "Authenticated player with a best can open nearby ranks")
+	_check(online_panel._rows_box.get_child_count() == 20, "Global view retains the first public page")
+	_check(not online_panel._rows_box.get_child(0).get_meta("leaderboard_is_personal_best"), "Global duplicate name is not mistaken for personal entry")
+	_check(online_panel._local_best.text.contains("#27") and online_panel._local_best.text.contains("8/9") and online_panel._local_best.text.contains(RunStats.format_time(321000)), "Personal footer includes rank, progress and time")
+	_check(online_panel._near_button.focus_neighbor_right == online_panel._refresh_button.get_path(), "Near button joins the horizontal focus loop")
+	_check(online_panel._refresh_button.focus_neighbor_right == online_panel._more_button.get_path() and online_panel._more_button.focus_neighbor_right == online_panel._close_button.get_path() and online_panel._close_button.focus_neighbor_right == online_panel._near_button.get_path(), "Global controls close the horizontal focus loop")
+	online_panel._near_button.pressed.emit()
+	_check(online_panel._near_me and online_panel._rows_box.get_child_count() == 5, "Near Me switches the list to personal neighbors")
+	_check(online_panel._more_button.disabled, "Near Me disables public pagination")
+	_check(online_panel._rows_box.get_child(1).get_meta("leaderboard_is_personal_best") == false and online_panel._rows_box.get_child(2).get_meta("leaderboard_is_personal_best"), "Only matching entry_id highlights the owner among duplicate names")
+	await _capture("near-me")
+	manager._personal["neighbors"] = []
+	manager._personal["error"] = "Could not load personal ranking"
+	manager.personal_changed.emit()
+	_check(online_panel._rows_box.get_child_count() == 1 and online_panel._rows_box.get_child(0).get_meta("leaderboard_is_personal_best"), "Cached personal best remains visible without neighbors")
+	_check(online_panel._status.text.contains("CACHED BEST") and online_panel._status.text.contains("unavailable"), "Missing personal neighbors are clearly marked unavailable")
+	_check(online_panel._local_best.text.contains("CACHED #27"), "Failed personal refresh never presents cached rank as live")
+	await _capture("near-me-cached-best")
+	online_panel._near_button.pressed.emit()
+	_check(not online_panel._near_me and online_panel._rows_box.get_child_count() == 20, "GLOBAL restores the public list")
+	online_panel._near_button.pressed.emit()
+	AuthManager.user_id = "22222222" + "-2222-4222-8222-" + "222222222222"
+	AuthManager.username = "另一账号"
+	AuthManager.session_changed.emit()
+	_check(not online_panel._near_me and online_panel._near_button.disabled, "Account switch returns to Global and disables empty personal view")
+	_check(online_panel._identity.text.contains("另一账号"), "Account switch refreshes current leaderboard identity")
+	online_panel.close()
+	AuthManager.authenticated = false
+	AuthManager.user_id = ""
+	AuthManager.username = ""
+	AuthManager.session_changed.emit()
 	RunStats.begin_run(true, 6)
 	_check(hud._ranking_badge.text.contains("CONTINUED"), "Badge updates after HUD ready")
 	RunStats.finish_run(false, 18)

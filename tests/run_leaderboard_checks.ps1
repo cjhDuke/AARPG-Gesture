@@ -45,7 +45,7 @@ try {
     if (-not $SkipImport) {
         Invoke-GameCheck 'import' ($baseArgs + @('--editor', '--import')) 'import'
     }
-    $testArgs = @('--', '--no-gesture-autostart')
+    $testArgs = @('--', '--no-gesture-autostart', '--leaderboard-offline')
     Invoke-GameCheck 'stats' ($baseArgs + @('res://tests/run_stats_test.tscn') + $testArgs + @('--practice')) 'stats'
     Invoke-GameCheck 'seed' ($baseArgs + @('res://tests/run_stats_test.tscn') + $testArgs + @('--practice', '--run-stats-seed')) 'restart'
     Invoke-GameCheck 'restart' ($baseArgs + @('res://tests/run_stats_test.tscn') + $testArgs + @('--practice', '--run-stats-verify')) 'restart'
