@@ -25,6 +25,7 @@ const MENU_SLIDE_TIME := 0.4
 @onready var button_saved: Button = $CanvasLayer/Control/Menu/Button_saved
 @onready var button_quit: Button = $CanvasLayer/Control/Menu/Button_quit
 @onready var button_settings: Button = $CanvasLayer/Control/Menu/Button_settings
+@onready var button_leaderboard: Button = $CanvasLayer/Control/Menu/Button_leaderboard
 @onready var marker: TitleBoomerang = $CanvasLayer/Control/Menu/Marker
 @onready var audio_stream_player: AudioStreamPlayer = $AudioStreamPlayer
 
@@ -33,6 +34,8 @@ var _starting: bool = false
 var _marker_placed: bool = false
 var _settings_open: bool = false
 var _saved_open: bool = false
+var _leaderboard_open: bool = false
+var _leaderboard: LeaderboardPanel
 var _title_active: bool = true
 var _account_open: bool = false
 var _account_button: Button
@@ -78,13 +81,15 @@ func setup_title_screen() -> void:
 	AudioManager.play_music(music)
 	button_start.pressed.connect(start_game)
 	button_saved.pressed.connect(open_saved_games)
+	button_leaderboard.pressed.connect(open_leaderboard)
 	button_quit.pressed.connect(quit_game)
 	button_settings.pressed.connect(open_settings)
 
 	# 竖排菜单：上下循环，左右也能在按钮间切换
-	var buttons: Array[Button] = [button_start, button_saved, button_settings, button_quit]
+	var buttons: Array[Button] = [button_start, button_saved, button_leaderboard, button_settings, button_quit]
 	for i in buttons.size():
 		var button := buttons[i]
+		button.add_theme_font_size_override("font_size", 10)
 		var prev_path := buttons[(i + buttons.size() - 1) % buttons.size()].get_path()
 		var next_path := buttons[(i + 1) % buttons.size()].get_path()
 		button.focus_neighbor_top = prev_path
@@ -136,7 +141,7 @@ func _show_menu() -> void:
 	tw.tween_property(menu, "modulate:a", 1.0, MENU_SLIDE_TIME)
 	tw.chain().tween_callback(func() -> void:
 		_menu_ready = true
-		if _title_active and not _starting and not _settings_open and not _saved_open and not _account_open:
+		if _title_active and not _starting and not _settings_open and not _saved_open and not _leaderboard_open and not _account_open:
 			button_start.grab_focus()
 		_sync_account_state.call_deferred())
 
@@ -159,7 +164,7 @@ func _move_marker(button: Button) -> void:
 
 
 func start_game() -> void:
-	if _starting or not _menu_ready or _settings_open or _saved_open or _account_open:
+	if _starting or not _menu_ready or _settings_open or _saved_open or _leaderboard_open or _account_open:
 		return
 	_starting = true
 	play_audio(button_press_audio)
@@ -174,31 +179,31 @@ func start_game() -> void:
 
 
 func quit_game() -> void:
-	if _settings_open or _saved_open or _account_open:
+	if _settings_open or _saved_open or _leaderboard_open or _account_open:
 		return
 	get_tree().quit()
 
 
 func open_settings() -> void:
-	if _starting or not _menu_ready or _settings_open or _saved_open or _account_open:
+	if _starting or not _menu_ready or _settings_open or _saved_open or _leaderboard_open or _account_open:
 		return
 	PauseMenu.show_title_settings()
 	if not PauseMenu.is_paused:
 		return
 	_settings_open = true
 	title_ui.process_mode = Node.PROCESS_MODE_DISABLED
-	for button in [button_start, button_saved, button_settings, button_quit]:
+	for button in [button_start, button_saved, button_leaderboard, button_settings, button_quit]:
 		button.disabled = true
 
 
 func open_saved_games() -> void:
-	if _starting or not _menu_ready or _settings_open or _saved_open or _account_open or not _title_active:
+	if _starting or not _menu_ready or _settings_open or _saved_open or _leaderboard_open or _account_open or not _title_active:
 		return
 	if not SavedGames.open(true):
 		return
 	_saved_open = true
 	title_ui.process_mode = Node.PROCESS_MODE_DISABLED
-	for button in [button_start, button_saved, button_settings, button_quit]:
+	for button in [button_start, button_saved, button_leaderboard, button_settings, button_quit]:
 		button.disabled = true
 
 
@@ -207,17 +212,45 @@ func _on_settings_closed() -> void:
 		return
 	_settings_open = false
 	title_ui.process_mode = Node.PROCESS_MODE_INHERIT
-	for button in [button_start, button_saved, button_settings, button_quit]:
+	for button in [button_start, button_saved, button_leaderboard, button_settings, button_quit]:
 		button.disabled = false
 	_sync_account_state.call_deferred()
 
 
+func open_leaderboard() -> void:
+	if _starting or not _menu_ready or _settings_open or _saved_open or _leaderboard_open or _account_open or not _title_active:
+		return
+	_leaderboard_open = true
+	for button in [button_start, button_saved, button_leaderboard, button_settings, button_quit, _account_button]:
+		if is_instance_valid(button):
+			button.disabled = true
+	title_ui.process_mode = Node.PROCESS_MODE_DISABLED
+	_leaderboard = LeaderboardPanel.new()
+	_leaderboard.name = "LeaderboardPanel"
+	add_child(_leaderboard)
+	_leaderboard.closed.connect(_on_leaderboard_closed)
+	_leaderboard.open()
+
+func _on_leaderboard_closed() -> void:
+	if not _leaderboard_open or not _title_active:
+		return
+	_leaderboard_open = false
+	title_ui.process_mode = Node.PROCESS_MODE_INHERIT
+	for button in [button_start, button_saved, button_leaderboard, button_settings, button_quit]:
+		button.disabled = false
+	if is_instance_valid(_account_button):
+		_account_button.disabled = not AuthManager.startup_check_complete
+	button_leaderboard.grab_focus.call_deferred()
+	if is_instance_valid(_leaderboard):
+		_leaderboard.queue_free()
+	_leaderboard = null
+	_sync_account_state.call_deferred()
 func _on_saved_games_closed() -> void:
 	if not _saved_open or not _title_active:
 		return
 	_saved_open = false
 	title_ui.process_mode = Node.PROCESS_MODE_INHERIT
-	for button in [button_start, button_saved, button_settings, button_quit]:
+	for button in [button_start, button_saved, button_leaderboard, button_settings, button_quit]:
 		button.disabled = false
 	button_saved.grab_focus()
 	_sync_account_state.call_deferred()
@@ -255,16 +288,16 @@ func _refresh_account_button() -> void:
 	if not is_instance_valid(_account_button):
 		return
 	_account_button.text = AuthManager.display_name() if AuthManager.authenticated else ("CHECKING..." if not AuthManager.startup_check_complete else "GUEST")
-	_account_button.disabled = not _menu_ready or not AuthManager.startup_check_complete or _starting or _account_open or _settings_open or _saved_open
+	_account_button.disabled = not _menu_ready or not AuthManager.startup_check_complete or _starting or _account_open or _settings_open or _saved_open or _leaderboard_open
 
 
 func _open_account() -> void:
-	if _starting or not _menu_ready or _settings_open or _saved_open or _account_open or not _title_active:
+	if _starting or not _menu_ready or _settings_open or _saved_open or _leaderboard_open or _account_open or not _title_active:
 		return
 	AuthManager.startup_prompt_handled = true
 	_account_was_authenticated = AuthManager.authenticated
 	_account_open = true
-	for button in [button_start, button_saved, button_settings, button_quit, _account_button]:
+	for button in [button_start, button_saved, button_leaderboard, button_settings, button_quit, _account_button]:
 		button.disabled = true
 	title_ui.process_mode = Node.PROCESS_MODE_DISABLED
 	_account_panel.open()
@@ -275,7 +308,7 @@ func _on_account_closed() -> void:
 		return
 	_account_open = false
 	title_ui.process_mode = Node.PROCESS_MODE_INHERIT
-	for button in [button_start, button_saved, button_settings, button_quit, _account_button]:
+	for button in [button_start, button_saved, button_leaderboard, button_settings, button_quit, _account_button]:
 		button.disabled = false
 	_refresh_account_button()
 	if AuthManager.authenticated:
@@ -298,7 +331,7 @@ func _sync_account_state() -> void:
 		elif AuthManager.authenticated and not AuthManager.busy and not _account_was_authenticated:
 			_account_panel.close()
 		return
-	if not _menu_ready or _settings_open or _saved_open or not AuthManager.startup_check_complete or AuthManager.busy:
+	if not _menu_ready or _settings_open or _saved_open or _leaderboard_open or not AuthManager.startup_check_complete or AuthManager.busy:
 		return
 	if AuthManager.authenticated:
 		AuthManager.startup_prompt_handled = true

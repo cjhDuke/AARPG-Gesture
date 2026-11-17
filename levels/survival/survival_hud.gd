@@ -14,6 +14,9 @@ var bag_provider : Callable
 @onready var trophy : Sprite2D = %Trophy
 @onready var retry_button : Button = %RetryButton
 @onready var title_button : Button = %TitleButton
+@onready var leaderboard_button : Button = %LeaderboardButton
+@onready var ranking_label : Label = %RankingLabel
+@onready var result_extra : Label = %ResultExtra
 @onready var congrats_music : AudioStreamPlayer = %CongratsMusic
 
 ## 已拥有强化的图标行：状态行上方，最多九枚原生 24px 图标。
@@ -27,6 +30,9 @@ var _save_notice_label : Label
 var _save_notice_tween : Tween
 var _upgrade_icons : Array[Control] = []
 var _item_buttons : Dictionary = {}
+var _leaderboard: LeaderboardPanel
+var _ranking_badge: Label
+var _result_snapshot: Dictionary = {}
 ## Boss 血条（只在 Boss 关存在）：左上角位置在手势提示框正下方，居中偏右给左边的名字留位置
 var _boss_bar : BossBar
 const BOSS_BAR_POS := Vector2( 168, 27 )
@@ -57,6 +63,17 @@ func _ready() -> void:
 	result_panel.visible = false
 	retry_button.pressed.connect( retry_pressed.emit )
 	title_button.pressed.connect( title_pressed.emit )
+	leaderboard_button.pressed.connect(_open_leaderboard)
+	leaderboard_button.focus_neighbor_left = retry_button.get_path()
+	leaderboard_button.focus_neighbor_right = title_button.get_path()
+	retry_button.focus_neighbor_right = leaderboard_button.get_path()
+	title_button.focus_neighbor_left = leaderboard_button.get_path()
+	_leaderboard = LeaderboardPanel.new()
+	_leaderboard.name = "LeaderboardPanel"
+	add_child(_leaderboard)
+	_leaderboard.closed.connect(_on_leaderboard_closed)
+	_build_ranking_badge()
+	RunStats.stats_changed.connect(_refresh_ranking_badge)
 
 
 func _build_save_notice() -> void:
@@ -124,9 +141,9 @@ func _make_frame( rect : Rect2 ) -> Panel:
 ## total_waves 为 0 表示 Boss 关（没有波次），显示 BOSS
 func set_status( stage : int, wave : int, total_waves : int, kills : int, best : int ) -> void:
 	if total_waves <= 0:
-		status_label.text = "STAGE %d  BOSS  KILLS %d  BEST %d" % [ stage, kills, best ]
+		status_label.text = "STAGE %d  BOSS  KILLS %d  BEST KILLS %d" % [ stage, kills, best ]
 	else:
-		status_label.text = "STAGE %d  WAVE %d/%d  KILLS %d  BEST %d" % [ stage, wave, total_waves, kills, best ]
+		status_label.text = "STAGE %d  WAVE %d/%d  KILLS %d  BEST KILLS %d" % [ stage, wave, total_waves, kills, best ]
 
 
 ## 显示 Boss 血条（名字固定 WIZARD）
@@ -211,16 +228,77 @@ func show_banner( text : String ) -> void:
 func show_result( victory : bool, kills : int, best : int ) -> void:
 	result_title.text = "VICTORY" if victory else "GAME OVER"
 	result_title.add_theme_color_override( "font_color", DungeonTheme.GOLD_BRIGHT if victory else Color( "#d98775" ) )
-	result_stats.text = "KILLS %d   BEST %d" % [ kills, best ]
+	var result := RunStats.get_last_result()
+	_result_snapshot = result
+	var progress := int(result.get("progress", 0))
+	var elapsed_ms := int(result.get("elapsed_ms", 0))
+	var continued := bool(result.get("continued", false))
+	var new_best := bool(result.get("new_best_kills", false))
+	var best_for_run := int(result.get("best_kills", best))
+	result_stats.text = "PROGRESS %d/9   %s %s" % [progress, "SESSION TIME" if continued else "TIME", RunStats.format_time(elapsed_ms)]
+	result_extra.text = "KILLS %d   BEST KILLS %d\n%s" % [kills, best_for_run, "NEW BEST KILLS!" if new_best else ""]
+	ranking_label.text = "NOT RANKED - %s" % str(result.get("ranking_reason", "ONLINE RANKING NOT AVAILABLE"))
 	trophy.visible = victory
 	if victory:
 		AudioManager.stop_music()
 		congrats_music.play()
 	result_panel.visible = true
+	leaderboard_button.visible = not LevelManager.practice_mode
+	ranking_label.visible = not LevelManager.practice_mode
+	for button in [retry_button, title_button]:
+		button.disabled = false
+	retry_button.focus_neighbor_right = leaderboard_button.get_path() if leaderboard_button.visible else title_button.get_path()
+	title_button.focus_neighbor_left = leaderboard_button.get_path() if leaderboard_button.visible else retry_button.get_path()
 	get_tree().paused = true
 	retry_button.grab_focus.call_deferred()
 
 
 func hide_result() -> void:
+	if _leaderboard.is_open:
+		_leaderboard.close()
 	congrats_music.stop()
 	result_panel.visible = false
+	retry_button.disabled = false
+	title_button.disabled = false
+
+func _open_leaderboard() -> void:
+	if LevelManager.practice_mode or _leaderboard == null or not result_panel.visible:
+		return
+	_leaderboard.open(str(_result_snapshot.get("player_name", "GUEST")), int(_result_snapshot.get("best_kills", 0)))
+	for button in [retry_button, title_button, leaderboard_button]:
+		button.disabled = true
+
+func _on_leaderboard_closed() -> void:
+	if result_panel.visible and leaderboard_button.visible:
+		for button in [retry_button, title_button, leaderboard_button]:
+			button.disabled = false
+		leaderboard_button.grab_focus.call_deferred()
+
+func _build_ranking_badge() -> void:
+	_ranking_badge = Label.new()
+	_ranking_badge.name = "RankingStatus"
+	_ranking_badge.text = "NOT RANKED"
+	_ranking_badge.position = Vector2(8, 202)
+	_ranking_badge.size = Vector2(240, 12)
+	_ranking_badge.add_theme_font_size_override("font_size", 8)
+	_ranking_badge.add_theme_color_override("font_color", DungeonTheme.GOLD_BRIGHT)
+	_ranking_badge.tooltip_text = "ONLINE RANKING NOT AVAILABLE"
+	_ranking_badge.mouse_filter = Control.MOUSE_FILTER_STOP
+	$Root.add_child(_ranking_badge)
+	$Root.move_child(_ranking_badge, result_panel.get_index())
+	_refresh_ranking_badge()
+
+
+func _refresh_ranking_badge(_changed: Variant = null) -> void:
+	if not is_instance_valid(_ranking_badge):
+		return
+	var snapshot := RunStats.get_run_snapshot()
+	if bool(snapshot.get("practice", false)):
+		_ranking_badge.text = "PRACTICE - NOT RANKED"
+		_ranking_badge.tooltip_text = "PRACTICE MODE"
+	elif bool(snapshot.get("continued", false)):
+		_ranking_badge.text = "CONTINUED - NOT RANKED"
+		_ranking_badge.tooltip_text = "CONTINUED RUN"
+	else:
+		_ranking_badge.text = "NOT RANKED"
+		_ranking_badge.tooltip_text = str(snapshot.get("ranking_reason", "ONLINE RANKING NOT AVAILABLE"))
