@@ -74,6 +74,7 @@ func _ready() -> void:
 	_leaderboard.closed.connect(_on_leaderboard_closed)
 	_build_ranking_badge()
 	RunStats.stats_changed.connect(_refresh_ranking_badge)
+	LeaderboardManager.run_status_changed.connect(_refresh_ranking_badge)
 
 
 func _build_save_notice() -> void:
@@ -237,7 +238,7 @@ func show_result( victory : bool, kills : int, best : int ) -> void:
 	var best_for_run := int(result.get("best_kills", best))
 	result_stats.text = "PROGRESS %d/9   %s %s" % [progress, "SESSION TIME" if continued else "TIME", RunStats.format_time(elapsed_ms)]
 	result_extra.text = "KILLS %d   BEST KILLS %d\n%s" % [kills, best_for_run, "NEW BEST KILLS!" if new_best else ""]
-	ranking_label.text = "NOT RANKED - %s" % str(result.get("ranking_reason", "ONLINE RANKING NOT AVAILABLE"))
+	_update_result_ranking_label(result)
 	trophy.visible = victory
 	if victory:
 		AudioManager.stop_music()
@@ -264,7 +265,7 @@ func hide_result() -> void:
 func _open_leaderboard() -> void:
 	if LevelManager.practice_mode or _leaderboard == null or not result_panel.visible:
 		return
-	_leaderboard.open(str(_result_snapshot.get("player_name", "GUEST")), int(_result_snapshot.get("best_kills", 0)))
+	_leaderboard.open()
 	for button in [retry_button, title_button, leaderboard_button]:
 		button.disabled = true
 
@@ -293,12 +294,45 @@ func _refresh_ranking_badge(_changed: Variant = null) -> void:
 	if not is_instance_valid(_ranking_badge):
 		return
 	var snapshot := RunStats.get_run_snapshot()
+	if snapshot.is_empty() and result_panel.visible:
+		snapshot = _result_snapshot
+	if result_panel.visible and not _result_snapshot.is_empty():
+		_update_result_ranking_label(_result_snapshot)
 	if bool(snapshot.get("practice", false)):
-		_ranking_badge.text = "PRACTICE - NOT RANKED"
+		_ranking_badge.text = "PRACTICE MODE - NOT RANKED"
 		_ranking_badge.tooltip_text = "PRACTICE MODE"
 	elif bool(snapshot.get("continued", false)):
-		_ranking_badge.text = "CONTINUED - NOT RANKED"
+		_ranking_badge.text = "CONTINUED RUN - NOT RANKED"
 		_ranking_badge.tooltip_text = "CONTINUED RUN"
 	else:
-		_ranking_badge.text = "NOT RANKED"
-		_ranking_badge.tooltip_text = str(snapshot.get("ranking_reason", "ONLINE RANKING NOT AVAILABLE"))
+		var run_status := LeaderboardManager.get_run_status()
+		var status := str(run_status.get("status", "NOT RANKED"))
+		_ranking_badge.text = _ranking_status_text(status)
+		var reason := str(run_status.get("reason", ""))
+		_ranking_badge.tooltip_text = reason if not reason.is_empty() else status
+
+
+func _update_result_ranking_label(result: Dictionary) -> void:
+	if bool(result.get("practice", false)):
+		ranking_label.text = "PRACTICE MODE - NOT RANKED"
+		return
+	if bool(result.get("continued", false)):
+		ranking_label.text = "CONTINUED RUN - NOT RANKED"
+		return
+	var run_status := LeaderboardManager.get_run_status()
+	var status := str(run_status.get("status", "NOT RANKED"))
+	var status_text := _ranking_status_text(status)
+	var rank := int(run_status.get("rank", 0))
+	if rank > 0 and status in ["RANKED", "UPLOADED"]:
+		status_text += "  #%d" % rank
+	ranking_label.text = status_text
+
+
+func _ranking_status_text(status: String) -> String:
+	match status:
+		"PREPARING": return "PREPARING"
+		"RANKED": return "RANKED"
+		"UPLOADING": return "UPLOADING"
+		"UPLOADED": return "UPLOADED"
+		"PENDING": return "PENDING"
+		_: return "NOT RANKED"

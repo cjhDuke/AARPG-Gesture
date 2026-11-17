@@ -15,7 +15,6 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi.testclient import TestClient
-from request_limits import RequestLimits  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVER = ROOT / "server"
@@ -24,6 +23,7 @@ if str(SERVER) not in sys.path:
 
 from app import AuthService, CodeRequest, LoginRequest, RegisterRequest, SCHEMA, Settings, VerifyRequest, create_app  # noqa: E402
 from cloud_saves import Mutation, PutSave  # noqa: E402
+from request_limits import RequestLimits  # noqa: E402
 
 # The Windows Proactor loop's socketpair setup can block in restricted test hosts.
 if os.name == "nt":
