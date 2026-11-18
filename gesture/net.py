@@ -1,4 +1,4 @@
-"""UDP 收发（协议见 docs/ai/gesture-protocol.md）。"""
+"""手势状态、预览帧和控制命令的本机 UDP 收发。"""
 import json
 import socket
 

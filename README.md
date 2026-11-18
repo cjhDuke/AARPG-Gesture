@@ -20,7 +20,7 @@
 
 ## 安装
 
-Windows x64 包发布后可从 [Releases](https://github.com/cjhDuke/AARPG-Gesture/releases) 下载。将 ZIP 完整解压，运行 `AARPG-Gesture.exe`，在主菜单选择 **START**。登录提示可用 **X** 或 **Esc** 关闭。
+Windows x64 包可直接从 [Releases](https://github.com/cjhDuke/AARPG-Gesture/releases) 下载。将 ZIP 完整解压，运行 `AARPG-Gesture.exe`，在主菜单选择 **START**。登录提示可用 **X** 或 **Esc** 关闭。
 
 键盘模式无需 Python。想用手势时，连接摄像头并安装 Python 3.12，然后在游戏目录运行：
 
@@ -54,7 +54,9 @@ python -m pip install -r gesture/requirements.txt
 
 ## 开发
 
-用 Godot 4.6.3 打开 [project.godot](project.godot) 后按 **F5** 运行。手势识别依赖与 Windows 包相同。
+从 [Kibyra 的 Free Medieval Fantasy UI Pack](https://kibyra.itch.io/free-medieval-fantasy-ui-pack) 下载 `Free_Medieval_Fantasy_UI_Pack.zip`。解压后将素材包根目录的 `icons3.png` 复制到项目的 `ui/theme/ui_icons.png`。Git 会忽略这张本地图集，已保留配套的 Godot 导入设置。
+
+用 Godot 4.6.3 打开 [project.godot](project.godot) 后按 **F5** 运行。手势识别依赖与 Windows 包相同。账号、云存档与排行榜的本地服务运行方式见 [服务端说明](server/README.md)。
 
 | 入口 | 职责 |
 | --- | --- |

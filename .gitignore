@@ -54,17 +54,12 @@ coverage.xml
 Thumbs.db
 Desktop.ini
 
-# 仅供本机参考的旧方案和后续草稿
-/docs/ai/account-cloud-design.md
-/docs/ai/expansion-plan.md
-/docs/ai/gesture-plan.md
-/docs/ai/guard-mode-plan.md
-/docs/ai/leaderboard-design.md
-/docs/ai/survival-mode-plan.md
-/docs/_local/
+# Required local asset from the Kibyra pack (see README)
+/ui/theme/ui_icons.png
 
 # 阶段验证临时目录与本地服务数据库
 /.stage[0-9]*_checks/
 /_ui_verify/
 /_ui_layout_check/
 /server/*.sqlite*
+/accounts.sqlite*

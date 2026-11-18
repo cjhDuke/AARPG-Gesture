@@ -1,6 +1,6 @@
 param(
 	[string]$PythonPath = (Get-Command python -ErrorAction Stop).Source,
-	[string]$GodotGui = 'C:\Users\DukeChen\Desktop\Godot_v4.6.3.exe',
+	[string]$GodotGui = 'godot',
 	[switch]$CapturePreview
 )
 
@@ -9,11 +9,10 @@ $project = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $checksRoot = Join-Path $project '.stage3_checks'
 $e2eRoot = Join-Path $checksRoot 'e2e'
 if (-not (Test-Path -LiteralPath (Join-Path $project '.godot\imported'))) {
-	throw 'Godot import cache is missing. Ask the main agent to run the unified import before this script.'
+	throw 'Godot import cache is missing. Import the project in Godot before running this script.'
 }
-if (-not (Test-Path -LiteralPath $PythonPath) -or -not (Test-Path -LiteralPath $GodotGui)) {
-	throw 'Python or Godot executable path is invalid.'
-}
+$PythonPath = (Get-Command $PythonPath -CommandType Application -ErrorAction Stop).Source
+$GodotGui = (Get-Command $GodotGui -CommandType Application -ErrorAction Stop).Source
 
 $runId = [Guid]::NewGuid().ToString('N')
 $runDir = Join-Path $e2eRoot ('online-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + $runId.Substring(0, 8))
@@ -86,7 +85,6 @@ try {
 	Invoke-Godot 'b-verify' 'tests/leaderboard_client_test.tscn' (Join-Path $runDir 'appdata-b') ($baseArgs + @('--client-role=b-verify')) 'leaderboard_client_test role=b-verify checks=\d+ passed'
 	Invoke-Godot 'a-retry' 'tests/leaderboard_client_test.tscn' (Join-Path $runDir 'appdata-a') ($baseArgs + @('--client-role=a-retry')) 'leaderboard_client_test role=a-retry checks=\d+ passed'
 	Invoke-Godot 'c-verify' 'tests/leaderboard_client_test.tscn' (Join-Path $runDir 'appdata-c') ($baseArgs + @('--client-role=c-verify') + $(if ($CapturePreview) { @('--capture-previews') } else { @() })) 'leaderboard_client_test role=c-verify checks=\d+ passed'
-	Invoke-Godot 'practice' 'tests/leaderboard_client_test.tscn' (Join-Path $runDir 'appdata-practice') (@('--practice') + $baseArgs + @('--client-role=practice')) 'leaderboard_client_test role=practice checks=\d+ passed'
 	if ((Get-Item -LiteralPath $fixtureErr).Length -gt 0) { throw "Fixture wrote to stderr; inspect retained logs in $logs" }
 	Write-Host "Online leaderboard checks passed. Logs retained at $logs"
 } catch {

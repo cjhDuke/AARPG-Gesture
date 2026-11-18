@@ -51,7 +51,7 @@ func _run() -> void:
 	if OS.get_cmdline_user_args().has("--exported-package-check"):
 		_check(FileAccess.file_exists("res://project.binary"), "Export has complete project configuration")
 		_check(ResourceLoader.exists("res://ui/leaderboard/leaderboard_panel.gd"), "Export contains leaderboard implementation")
-		for excluded in ["res://tests/run_stats_test.gd", "res://server/app.py", "res://docs/ai/leaderboard-online.md"]:
+		for excluded in ["res://tests/run_stats_test.gd", "res://server/app.py", "res://docs/releases/v1.1.0.md"]:
 			_check(not FileAccess.file_exists(excluded), "Private/test source excluded: " + excluded)
 	get_tree().current_scene = null
 	get_tree().change_scene_to_file("res://ui/title/title_scene.tscn")

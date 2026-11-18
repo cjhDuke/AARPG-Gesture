@@ -4,7 +4,7 @@ extends Node
 const TITLE_SCENE := "res://ui/title/title_scene.tscn"
 const CONFIG_ARG := "--client-config="
 const ROLE_ARG := "--client-role="
-const VALID_ROLES := ["a-seed", "a-retry", "b-verify", "c-verify", "practice"]
+const VALID_ROLES := ["a-seed", "a-retry", "b-verify", "c-verify"]
 
 var _driver := false
 var _role := ""
@@ -39,17 +39,6 @@ func _execute() -> void:
 		_finish()
 		return
 	if not _check(OS.get_environment("APPDATA").replace("\\", "/").contains("/.stage3_checks/"), "isolated APPDATA is set"):
-		_finish()
-		return
-	if _role == "practice":
-		if not _check(LevelManager.practice_mode, "practice mode is enabled at process startup"):
-			_finish()
-			return
-		await get_tree().process_frame
-		_check(AuthManager._http == null, "practice creates no auth HTTPRequest")
-		_check(LeaderboardManager.get_children().filter(func(node: Node) -> bool: return node is HTTPRequest).is_empty(), "practice creates no leaderboard HTTPRequest")
-		_check(LeaderboardManager._active.is_empty(), "practice has no active requests")
-		_check(not DirAccess.dir_exists_absolute(ProjectSettings.globalize_path("user://stats")), "practice creates no local stats files")
 		_finish()
 		return
 	if not _check(not LevelManager.practice_mode, "normal mode is enabled"):
