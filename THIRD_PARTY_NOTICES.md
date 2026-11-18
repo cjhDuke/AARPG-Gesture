@@ -11,4 +11,4 @@
 | 中世纪 UI 图标 | Kibyra。素材页允许在游戏项目中使用，限制原样再分发。项目使用 `ui_icons.png` 图集。[作者的素材页](https://kibyra.itch.io/free-medieval-fantasy-ui-pack) |
 | 角色、怪物、地图与部分音效 | Michael Games 的 Godot 教程配套素材。项目文件与本机教程资源按哈希核对，并按作者下载列表比对了对应文件及素材包。作者在素材页表示可用于商业项目。[2D Action and Adventure Tutorial Assets](https://michaelgames.itch.io/2d-action-adventure-rpg-assets) |
 
-`levels/survival/dungeon.mp3`、`grass.mp3` 和 `congratulations.mp3` 的具体出处与许可仍待确认。公开源码和 Windows 安装包分别审核素材范围。
+地牢、草地和胜利曲（`dungeon.mp3`、`grass.mp3`、`congratulations.mp3`）由项目作者创作。公开源码和 Windows 安装包分别审核第三方素材范围。
