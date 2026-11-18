@@ -1,0 +1,16 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://enemies/goblin/goblin.tscn" id="1_gob"]
+[ext_resource type="Script" path="res://enemies/archer_goblin/archer_goblin.gd" id="2_archer"]
+[ext_resource type="Script" path="res://enemies/scripts/states/enemy_state_archer.gd" id="3_state"]
+
+[node name="ArcherGoblin" instance=ExtResource("1_gob")]
+script = ExtResource("2_archer")
+hp = 2
+apple_drop_chance = 0.2
+
+[node name="Sprite2D" parent="." index="3"]
+self_modulate = Color(0.55, 1.5, 0.55, 1)
+
+[node name="Approach" parent="EnemyStateMachine" index="0"]
+script = ExtResource("3_state")

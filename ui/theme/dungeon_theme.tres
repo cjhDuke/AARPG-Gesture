@@ -1,0 +1,109 @@
+[gd_resource type="Theme" load_steps=13 format=3]
+
+[ext_resource type="FontFile" path="res://ui/fonts/abaddon_light.ttf" id="1_font"]
+[ext_resource type="Texture2D" path="res://ui/theme/panel.png" id="2_panel"]
+[ext_resource type="Texture2D" path="res://ui/theme/selected.png" id="3_selected"]
+[ext_resource type="Texture2D" path="res://ui/theme/hover.png" id="4_hover"]
+[ext_resource type="Texture2D" path="res://ui/theme/pressed.png" id="5_pressed"]
+[ext_resource type="Texture2D" path="res://ui/theme/disabled.png" id="6_disabled"]
+
+[sub_resource type="StyleBoxTexture" id="Style_panel"]
+texture = ExtResource("2_panel")
+texture_margin_left = 7.0
+texture_margin_top = 7.0
+texture_margin_right = 7.0
+texture_margin_bottom = 7.0
+content_margin_left = 10.0
+content_margin_top = 5.0
+content_margin_right = 10.0
+content_margin_bottom = 5.0
+axis_stretch_horizontal = 0
+axis_stretch_vertical = 0
+
+[sub_resource type="StyleBoxTexture" id="Style_selected"]
+texture = ExtResource("3_selected")
+texture_margin_left = 7.0
+texture_margin_top = 7.0
+texture_margin_right = 7.0
+texture_margin_bottom = 7.0
+content_margin_left = 10.0
+content_margin_top = 5.0
+content_margin_right = 10.0
+content_margin_bottom = 5.0
+axis_stretch_horizontal = 0
+axis_stretch_vertical = 0
+
+[sub_resource type="StyleBoxTexture" id="Style_hover"]
+texture = ExtResource("4_hover")
+texture_margin_left = 7.0
+texture_margin_top = 7.0
+texture_margin_right = 7.0
+texture_margin_bottom = 7.0
+content_margin_left = 10.0
+content_margin_top = 5.0
+content_margin_right = 10.0
+content_margin_bottom = 5.0
+axis_stretch_horizontal = 0
+axis_stretch_vertical = 0
+
+[sub_resource type="StyleBoxTexture" id="Style_pressed"]
+texture = ExtResource("5_pressed")
+texture_margin_left = 7.0
+texture_margin_top = 7.0
+texture_margin_right = 7.0
+texture_margin_bottom = 7.0
+content_margin_left = 10.0
+content_margin_top = 5.0
+content_margin_right = 10.0
+content_margin_bottom = 5.0
+axis_stretch_horizontal = 0
+axis_stretch_vertical = 0
+
+[sub_resource type="StyleBoxTexture" id="Style_disabled"]
+texture = ExtResource("6_disabled")
+texture_margin_left = 7.0
+texture_margin_top = 7.0
+texture_margin_right = 7.0
+texture_margin_bottom = 7.0
+content_margin_left = 10.0
+content_margin_top = 5.0
+content_margin_right = 10.0
+content_margin_bottom = 5.0
+axis_stretch_horizontal = 0
+axis_stretch_vertical = 0
+
+[sub_resource type="StyleBoxFlat" id="Style_focus"]
+bg_color = Color(0, 0, 0, 0)
+draw_center = false
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.953, 0.875, 0.682, 1)
+expand_margin_left = 2.0
+expand_margin_top = 2.0
+expand_margin_right = 2.0
+expand_margin_bottom = 2.0
+anti_aliasing = false
+
+[resource]
+default_font = ExtResource("1_font")
+default_font_size = 12
+Button/colors/font_color = Color(0.953, 0.875, 0.682, 1)
+Button/colors/font_hover_color = Color(1, 0.953, 0.827, 1)
+Button/colors/font_pressed_color = Color(0.953, 0.875, 0.682, 1)
+Button/colors/font_focus_color = Color(0.953, 0.875, 0.682, 1)
+Button/colors/font_disabled_color = Color(0.60, 0.54, 0.48, 1)
+Button/font_sizes/font_size = 14
+Button/styles/normal = SubResource("Style_panel")
+Button/styles/hover = SubResource("Style_hover")
+Button/styles/pressed = SubResource("Style_pressed")
+Button/styles/hover_pressed = SubResource("Style_pressed")
+Button/styles/focus = SubResource("Style_focus")
+Button/styles/disabled = SubResource("Style_disabled")
+PanelContainer/styles/panel = SubResource("Style_panel")
+Panel/styles/panel = SubResource("Style_panel")
+Label/colors/font_color = Color(0.953, 0.875, 0.682, 1)
+Label/font_sizes/font_size = 12
+Dungeon/styles/panel = SubResource("Style_panel")
+Dungeon/styles/selected = SubResource("Style_selected")
