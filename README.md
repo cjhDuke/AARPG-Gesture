@@ -1,20 +1,36 @@
 # PSI HAND
 
-**PSI HAND** 是 AARPG-Gesture 仓库中的一款 2D 像素生存游戏，也是一个数字图像处理课程项目。张开手掌引导角色走位，握拳用念力操控回旋镖，松开拳头让回旋镖返回。你将在地牢和草地迎战多波敌人，从三项强化中选择一项，最后挑战巫师 Boss。没有摄像头也可以用键盘完成游戏。
+[![版本 1.1.0](https://img.shields.io/badge/Version-1.1.0-A26935)](docs/releases/v1.1.0.md)
+[![Godot 4.6.3](https://img.shields.io/badge/Godot-4.6.3-478CBF?logo=godotengine&logoColor=white)](project.godot)
+[![OpenCV 手势识别](https://img.shields.io/badge/OpenCV-Hand%20Tracking-29776E?logo=opencv&logoColor=white)](#工作原理)
+[![Windows x64](https://img.shields.io/badge/Windows-x64-395C9E)](#安装)
 
-## 游戏截图
+一款用摄像头玩的 2D 像素生存游戏。**张掌走位，握拳控镖，松手收回**。穿过地牢和草地，用清波后选到的强化搭配打法，最后挑战巫师 Boss。没有摄像头也能用键盘打完整局。
 
-| 标题画面 | 生存战斗 | 强化三选一 |
-| --- | --- | --- |
-| ![PSI HAND 标题画面](docs/art/ui_title.png) | ![战斗界面与 HUD](docs/art/ui_hud.png) | ![强化三选一界面](docs/art/ui_upgrade.png) |
+![PSI HAND v1.1.0 游客主菜单，含存档、排行榜和设置入口](docs/art/release_v110.png)
 
-## Windows 游玩
+*v1.1.0 Windows 候选包实机截图，游客模式。*
 
-Windows 包待发布，发布后可在 [GitHub Releases](https://github.com/cjhDuke/AARPG-Gesture/releases) 获取。下载 Windows ZIP 后，先完整解压到同一文件夹，保留可执行文件旁的配套文件和目录，再运行 `AARPG-Gesture.exe`。在标题菜单选择 **START** 开局。
+## 功能特点
 
-键盘默认可玩，无需安装 Python 或连接摄像头。登录提示可用右上角 **X** 或 **Esc** 关闭。游客可以离线游玩并使用本地存档，联网时可以浏览公开排行榜。登录后可同步账号存档与个人击杀纪录 **BEST KILLS**，符合资格的新局可提交线上成绩。
+- **手势战斗**：角色跟随手掌的位置走动，敌人靠近时自动挥剑。握拳后角色站定，回旋镖跟着手走，可以绕到盾兵背后攻击。
+- **三关生存**：地牢和草地各有三波战斗，最后一关对战巫师。击败敌人后可拾取物品，指定波次结束后从三种随机强化中选一项。
+- **随时续玩**：支持手动存档和波次自动存档。游客可离线游玩，登录后可同步存档和个人最高击杀数。
+- **线上排行榜**：先比较闯关进度，同进度再比较有效用时。游客联网即可浏览，登录并取得排名资格的新局才能提交成绩。
 
-### 键盘操作
+## 安装
+
+Windows x64 包发布后可从 [Releases](https://github.com/cjhDuke/AARPG-Gesture/releases) 下载。将 ZIP 完整解压，运行 `AARPG-Gesture.exe`，在主菜单选择 **START**。登录提示可用 **X** 或 **Esc** 关闭。
+
+键盘模式无需 Python。想用手势时，连接摄像头并安装 Python 3.12，然后在游戏目录运行：
+
+```powershell
+python -m pip install -r gesture/requirements.txt
+```
+
+装好依赖后重启游戏，识别进程会自动启动。使用虚拟环境时，可以从已激活环境的终端启动游戏，或在 `gesture/config.json` 的 `python` 字段指定解释器。
+
+## 操作
 
 | 按键 | 操作 |
 | --- | --- |
@@ -24,29 +40,28 @@ Windows 包待发布，发布后可在 [GitHub Releases](https://github.com/cjhD
 | **Q** / **E** | 分别使用背包中的苹果 / 药水 |
 | **Esc** | 暂停或返回 |
 
-### 摄像头手势
+使用摄像头时，看到 **KEEP HAND OUT** 先把手移出操作框，等 **READY - HAND IN** 出现后再伸手。**F3** 重新采集背景，**F4** 切换操作框。菜单用键盘或鼠标操作。
 
-1. 连接摄像头并安装 Python 3.12。确认 Windows 终端能运行 `python --version`，再在解压目录中安装识别依赖 OpenCV 和 NumPy。
+## 工作原理
 
-   ```powershell
-   python -m pip install -r gesture/requirements.txt
-   ```
+这是一个数字图像处理课程项目。识别在本机运行，使用 OpenCV 的传统图像处理方法，无需训练模型。
 
-2. 启动或重启游戏，客户端会自动启动识别进程。如果使用独立的 Python 环境，请先激活该环境并从同一终端启动游戏，或将 `gesture/config.json` 中的 `python` 指向已安装依赖的解释器。
-3. 看到 **KEEP HAND OUT** 时，将手移出摄像头操作框。出现 **READY - HAND IN** 后伸手开始操作。按 **F3** 可重采背景，按 **F4** 可切换操作框。菜单使用键盘或鼠标操作。
+1. 将摄像头画面转换到 YCrCb，结合背景差分、肤色掩膜和连通域提取手部。
+2. 用距离变换找掌心，排除小臂后用轮廓张开度和实心度区分张掌与握拳。
+3. 对掌心位置和手形做平滑与防抖，再通过本机 UDP 把识别结果传给 Godot。
 
-## 传统图像处理管线
+光线突变、脸进入操作框或手指伸出画面时，识别可能不稳。可以切换操作框或重新采集背景，也可以切回键盘。
 
-Python 端对摄像头画面做高斯滤波并转换到 YCrCb，用背景差分和肤色掩膜筛出前景，再用形态学和连通域提取手部。距离变换用于定位掌心并估计掌心半径。识别端排除小臂后计算轮廓张开度，结合实心度区分张掌与握拳，经时序防抖和平滑后，通过本机 UDP 把手势和位置传给 Godot。整个识别流程使用 OpenCV 等传统图像处理方法，无需训练模型。
+## 开发
 
-## 从源码运行
+用 Godot 4.6.3 打开 [project.godot](project.godot) 后按 **F5** 运行。手势识别依赖与 Windows 包相同。
 
-使用 Godot 4.6.3 打开 [project.godot](project.godot)，运行项目即可进入游戏。手势依赖的安装方法与 Windows 包相同，在仓库根目录执行上面的命令即可。
+| 入口 | 职责 |
+| --- | --- |
+| [`gesture/`](gesture/) | Python 手势识别、摄像头与跟踪 |
+| [`autoload/gesture_input.gd`](autoload/gesture_input.gd) | 接收手势数据并交给游戏 |
+| [`levels/survival/`](levels/survival/) | 生存关卡、敌人波次与强化 |
 
-- [标题场景](ui/title/title_scene.tscn) 是客户端主场景。
-- [生存关卡](levels/survival/) 包含波次、强化和手势战斗逻辑。
-- [Python 识别入口](gesture/main.py) 与 [Godot 手势接收端](autoload/gesture_input.gd) 分别负责识别和接收手势状态。
+## 致谢
 
-## 素材归属
-
-角色、地图和部分音效使用了 Michael Games 的教程素材。UI 图集来自 Kibyra，强化图标来自 Quintino Pixels，界面使用 DungeonFont 和 Abaddon Light。作者、来源与许可记录见 [第三方素材与许可](THIRD_PARTY_NOTICES.md)。
+角色、地图和部分音效来自 Michael Games 的教程素材。UI 图集来自 Kibyra，强化图标来自 Quintino Pixels。字体采用 DungeonFont 和 Abaddon Light。完整署名见 [第三方素材与许可](THIRD_PARTY_NOTICES.md)。
