@@ -62,6 +62,10 @@ python -m pip install -r gesture/requirements.txt
 | [`autoload/gesture_input.gd`](autoload/gesture_input.gd) | 接收手势数据并交给游戏 |
 | [`levels/survival/`](levels/survival/) | 生存关卡、敌人波次与强化 |
 
+## 许可
+
+代码以 [MIT 许可](LICENSE) 发布。角色、地图、音效、字体和 UI 素材的授权见 [第三方素材与许可](THIRD_PARTY_NOTICES.md)。
+
 ## 致谢
 
 角色、地图和部分音效来自 Michael Games 的教程素材。UI 图集来自 Kibyra，强化图标来自 Quintino Pixels。字体采用 DungeonFont 和 Abaddon Light。完整署名见 [第三方素材与许可](THIRD_PARTY_NOTICES.md)。
