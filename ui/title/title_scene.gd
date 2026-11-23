@@ -1,6 +1,5 @@
 extends Node2D
 
-const START_LEVEL: String = "res://levels/survival/survival_arena.tscn"
 ## 标题背景的镜头位置（主角被隐藏，只借用它身上的 Camera2D）。
 ## x 取房间中心，y 比中心靠上，让顶部露出一截墙，看得出是个房间
 const CAMERA_POS := Vector2(256, 112)
@@ -175,7 +174,7 @@ func start_game() -> void:
 	_marker_tween.tween_property(marker, "position:x", marker.position.x + MARKER_FLY_DISTANCE, MARKER_FLY_TIME) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	await _marker_tween.finished
-	LevelManager.load_new_level(START_LEVEL)
+	LevelManager.start_new_game()
 
 
 func quit_game() -> void:
@@ -337,7 +336,7 @@ func _sync_account_state() -> void:
 		return
 	if AuthManager.authenticated:
 		AuthManager.startup_prompt_handled = true
-	elif not AuthManager.startup_prompt_handled:
+	elif not LevelManager.tutorial_preview and not AuthManager.startup_prompt_handled:
 		_open_account()
 
 

@@ -21,6 +21,11 @@ const CONFIRM_LOCK_MS : int = 400
 const COL_DIM := Color( 0.129, 0.102, 0.125, 0.64 )
 
 signal chosen( id : String )
+## 供关卡接管 Esc，未连接时仍只吞掉按键。
+signal dismiss_requested
+
+## 关卡附加确认框打开时暂停卡片交互，保留当前选项和游戏暂停。
+var selection_enabled := true
 
 var _ids : Array[String] = []
 ## 打开时各强化的当前等级（id -> 等级，0 = 还没有）
@@ -113,11 +118,12 @@ func card_count() -> int:
 
 
 func _input( event : InputEvent ) -> void:
-	if _done:
+	if _done or not selection_enabled:
 		return
 	# 弹窗期间 Esc 不能弹出暂停菜单：在这里吞掉（PauseMenu 用 _unhandled_input）
 	if event.is_action_pressed( "pause" ):
 		get_viewport().set_input_as_handled()
+		dismiss_requested.emit()
 		return
 	if event.is_action_pressed( "ui_left" ) or event.is_action_pressed( "left" ):
 		_select( _sel - 1 )
@@ -141,7 +147,7 @@ func _on_card_gui_input( event : InputEvent, i : int ) -> void:
 
 
 func _select( i : int ) -> void:
-	if _cards.is_empty():
+	if not selection_enabled or _cards.is_empty():
 		return
 	_sel = clampi( i, 0, _cards.size() - 1 )
 	for k in _cards.size():
@@ -150,7 +156,7 @@ func _select( i : int ) -> void:
 
 
 func _confirm() -> void:
-	if _done or Time.get_ticks_msec() - _opened_ms < CONFIRM_LOCK_MS:
+	if _done or not selection_enabled or Time.get_ticks_msec() - _opened_ms < CONFIRM_LOCK_MS:
 		return
 	_done = true
 	_play( CHOOSE_SOUND )

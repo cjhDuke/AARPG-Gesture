@@ -6,6 +6,9 @@ signal busy_changed(value: bool)
 
 const DEFAULT_API := "https://game.dukechen.top/api/v1"
 const SESSION_PATH := "user://account/session.dat"
+const TUTORIAL_DIR := "user://account/tutorial"
+const TUTORIAL_RETRY_MS := 30000
+const UUID_PATTERN := "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 const REQUEST_TIMEOUT := 15.0
 const RESPONSE_LIMIT := 65536
 const REFRESH_SKEW_SECONDS := 30
@@ -44,6 +47,14 @@ var _restore_started := false
 var _storage_thread: Thread
 var _storage_result: Dictionary = {}
 var _storage_generation := 0
+var _tutorial_state := ""
+var _tutorial_pending: Dictionary = {}
+var _tutorial_unwritten: Dictionary = {}
+var _tutorial_write_retry_at := 0
+var _tutorial_http: HTTPRequest
+var _tutorial_retry_at := 0
+var _tutorial_auth_retried := false
+var _tutorial_refresh_needed := false
 
 const SERVICE_PATHS := {
 	"POST /ranked-runs": true,
@@ -86,6 +97,148 @@ func _process(_delta: float) -> void:
 			_begin_refresh("", {}, _remember)
 		elif _refresh_pending and now >= _refresh_retry_at:
 			_begin_refresh("", {}, _remember)
+	_process_tutorial_sync()
+
+
+func should_start_tutorial() -> bool:
+	return authenticated and _tutorial_state == "pending" and _pending_tutorial_state(user_id).is_empty()
+
+
+func finish_tutorial(user_id: String, state: String) -> void:
+	var owner := user_id.to_lower()
+	if LevelManager.practice_mode or state not in ["completed", "skipped"] or RegEx.create_from_string(UUID_PATTERN).search(owner) == null:
+		return
+	# The caller passes the UUID captured at tutorial entry, even after sign-out.
+	if not _pending_tutorial_state(owner).is_empty():
+		return
+	if authenticated and self.user_id == owner and _is_confirmed_tutorial_state(_tutorial_state):
+		return
+	_tutorial_pending[owner] = state
+	if not _write_tutorial_state(owner, state):
+		_tutorial_unwritten[owner] = state
+		_tutorial_write_retry_at = Time.get_ticks_msec() + TUTORIAL_RETRY_MS
+		push_warning("Could not save the pending tutorial result. It will be retried.")
+
+
+func _pending_tutorial_state(owner: String) -> String:
+	if not _tutorial_pending.has(owner):
+		var file := FileAccess.open(TUTORIAL_DIR.path_join(owner + ".state"), FileAccess.READ)
+		var state := file.get_as_text() if file != null and file.get_length() <= 16 else ""
+		_tutorial_pending[owner] = state if state in ["completed", "skipped"] else ""
+	return _tutorial_pending[owner]
+
+
+func _write_tutorial_state(owner: String, state: String) -> bool:
+	if DirAccess.make_dir_recursive_absolute(TUTORIAL_DIR) != OK:
+		return false
+	var path := TUTORIAL_DIR.path_join(owner + ".state")
+	var temporary := "%s.%d.tmp" % [path, OS.get_process_id()]
+	var file := FileAccess.open(temporary, FileAccess.WRITE)
+	if file == null:
+		return false
+	file.store_string(state)
+	file.flush()
+	var error := file.get_error()
+	file.close()
+	if error == OK and DirAccess.rename_absolute(temporary, path) == OK:
+		return true
+	DirAccess.remove_absolute(temporary)
+	return false
+
+
+func _process_tutorial_sync() -> void:
+	var now := Time.get_ticks_msec()
+	if not _tutorial_unwritten.is_empty() and now >= _tutorial_write_retry_at:
+		_tutorial_write_retry_at = now + TUTORIAL_RETRY_MS
+		for owner: String in _tutorial_unwritten.keys():
+			if _write_tutorial_state(owner, _tutorial_unwritten[owner]):
+				_tutorial_unwritten.erase(owner)
+	if not authenticated or busy or _storage_thread != null or _tutorial_http != null or now < _tutorial_retry_at:
+		return
+	var state := _pending_tutorial_state(user_id)
+	if state.is_empty():
+		return
+	if _tutorial_refresh_needed:
+		_tutorial_refresh_needed = false
+		if refresh_service_session(user_id) != OK:
+			_delay_tutorial_sync()
+		return
+	var token := cloud_access_token()
+	if token.is_empty():
+		return
+	var http := HTTPRequest.new()
+	http.timeout = REQUEST_TIMEOUT
+	http.body_size_limit = RESPONSE_LIMIT
+	http.max_redirects = 0
+	add_child(http)
+	_tutorial_http = http
+	http.request_completed.connect(_on_tutorial_completed.bind(http, user_id, token))
+	var headers := PackedStringArray(["Content-Type: application/json", "Accept: application/json", "Authorization: Bearer " + token])
+	if http.request(_api_base + "/me/tutorial", headers, HTTPClient.METHOD_POST, JSON.stringify({"state": state})) != OK:
+		_cancel_tutorial_request()
+		_delay_tutorial_sync()
+
+
+func _on_tutorial_completed(result: int, status: int, headers: PackedStringArray, body: PackedByteArray, http: HTTPRequest, owner: String, token: String) -> void:
+	if _tutorial_http != http:
+		return
+	_tutorial_http = null
+	http.queue_free()
+	if not authenticated or user_id != owner:
+		return
+	if result == HTTPRequest.RESULT_SUCCESS and status in [401, 403] and not _tutorial_auth_retried:
+		_tutorial_auth_retried = true
+		_tutorial_refresh_needed = token == cloud_access_token()
+		return
+	if result == HTTPRequest.RESULT_SUCCESS and status >= 200 and status < 300:
+		var parser := JSON.new()
+		if parser.parse(body.get_string_from_utf8()) == OK and parser.data is Dictionary and _is_confirmed_tutorial_state(parser.data.get("tutorial_state")):
+			_tutorial_state = parser.data["tutorial_state"]
+			_tutorial_pending[owner] = ""
+			_tutorial_unwritten.erase(owner)
+			DirAccess.remove_absolute(TUTORIAL_DIR.path_join(owner + ".state"))
+			_tutorial_auth_retried = false
+			return
+	_delay_tutorial_sync(headers)
+
+
+func _delay_tutorial_sync(headers: PackedStringArray = PackedStringArray()) -> void:
+	var retry_ms := TUTORIAL_RETRY_MS
+	for header in headers:
+		if header.to_lower().begins_with("retry-after:"):
+			var value := header.get_slice(":", 1).strip_edges()
+			if value.is_valid_int():
+				retry_ms = clampi(int(value), 1, 86400) * 1000
+	_tutorial_retry_at = Time.get_ticks_msec() + retry_ms
+	_tutorial_auth_retried = false
+
+
+func _cancel_tutorial_request() -> void:
+	if _tutorial_http != null:
+		var http := _tutorial_http
+		_tutorial_http = null
+		http.cancel_request()
+		http.queue_free()
+
+
+func _reset_tutorial_session() -> void:
+	_cancel_tutorial_request()
+	_tutorial_state = ""
+	_tutorial_retry_at = 0
+	_tutorial_auth_retried = false
+	_tutorial_refresh_needed = false
+
+
+func _is_confirmed_tutorial_state(state: Variant) -> bool:
+	return state is String and state in ["exempt", "completed", "skipped"]
+
+
+func _read_tutorial_state(user: Dictionary) -> void:
+	# A profile response started before a successful POST can still carry pending.
+	if _is_confirmed_tutorial_state(_tutorial_state):
+		return
+	var state: Variant = user.get("tutorial_state")
+	_tutorial_state = state if (state is String and state == "pending") or _is_confirmed_tutorial_state(state) else ""
 
 
 func send_code(target_email: String, purpose: String) -> void:
@@ -316,6 +469,7 @@ func _on_request_completed(result: int, response_code: int, _headers: PackedStri
 				_access_token = ""
 				_access_expires_at = 0
 				authenticated = false
+				_cancel_tutorial_request()
 				_refresh_pending = not _refresh_token.is_empty()
 				_refresh_retry_at = int(Time.get_unix_time_from_system()) + 30
 				session_changed.emit()
@@ -406,10 +560,16 @@ func _on_request_completed(result: int, response_code: int, _headers: PackedStri
 			_complete(operation, false, INVALID_ERROR, {})
 			return
 		username = updated_name
+		_read_tutorial_state(data)
 		session_changed.emit()
 		_complete(operation, true, "Display name saved.", {"username": username})
 	elif operation == "me":
-		_complete(operation, true, "Account loaded.", data.get("user", {}))
+		var profile: Variant = data.get("user", data)
+		if not authenticated or not (profile is Dictionary) or profile.get("id") != user_id:
+			_complete(operation, false, INVALID_ERROR, {})
+			return
+		_read_tutorial_state(profile)
+		_complete(operation, true, "Account loaded.", profile)
 	else:
 		_complete(operation, true, "Request completed.", data)
 
@@ -432,7 +592,7 @@ func _accept_session(data: Dictionary) -> bool:
 		return false
 	if not (identity is String) or not (address is String) or not str(address).contains("@") or str(address).length() > 254:
 		return false
-	if RegEx.create_from_string("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").search(identity) == null:
+	if RegEx.create_from_string(UUID_PATTERN).search(identity) == null:
 		return false
 	if not (expires is int or expires is float) or not is_finite(float(expires)) or float(expires) < 1 or float(expires) > 86400:
 		return false
@@ -442,7 +602,10 @@ func _accept_session(data: Dictionary) -> bool:
 	_refresh_token = refresh
 	_access_expires_at = int(Time.get_unix_time_from_system()) + int(expires)
 	_refresh_expires_at = int(refresh_expires)
-	user_id = str(user.get("id", ""))
+	if user_id != identity:
+		_reset_tutorial_session()
+	user_id = identity
+	_read_tutorial_state(user)
 	email = str(user.get("email", ""))
 	username = display_username
 	authenticated = true
@@ -520,6 +683,7 @@ func _explicit_auth_allowed() -> bool:
 
 
 func _clear_session() -> void:
+	_reset_tutorial_session()
 	_access_token = ""
 	_refresh_token = ""
 	_access_expires_at = 0

@@ -127,6 +127,10 @@ class ProfileRequest(Body):
         return clean_username(value)
 
 
+class TutorialRequest(Body):
+    state: Literal["completed", "skipped"]
+
+
 class RefreshRequest(Body):
     refresh_token: SecretStr = Field(min_length=40, max_length=128)
 
@@ -190,6 +194,14 @@ class AuthService:
                 for statement in LEADERBOARD_TABLES:
                     db.execute(statement)
                 db.execute("UPDATE schema_version SET version=4")
+        # This additive migration keeps the existing schema version contract.
+        with self.transaction() as db:
+            columns = {column["name"] for column in db.execute("PRAGMA table_info(users)")}
+            if "tutorial_state" not in columns:
+                db.execute("""
+                    ALTER TABLE users ADD COLUMN tutorial_state TEXT NOT NULL DEFAULT 'exempt'
+                    CHECK(tutorial_state IN ('pending', 'exempt', 'completed', 'skipped'))
+                """)
         self.leaderboards = Leaderboards(self)
 
     @contextmanager
@@ -316,7 +328,7 @@ class AuthService:
             for old in active[9:]:
                 db.execute("DELETE FROM sessions WHERE id=?", (old["id"],))
             db.execute("INSERT INTO sessions VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), user["id"], self.digest(access), self.digest(refresh), now + ACCESS_SECONDS, refresh_expires))
-        profile = db.execute("SELECT id,email,username FROM users WHERE id=?", (user["id"],)).fetchone()
+        profile = db.execute("SELECT id,email,username,tutorial_state FROM users WHERE id=?", (user["id"],)).fetchone()
         return {"access_token": access, "refresh_token": refresh, "expires_in": ACCESS_SECONDS, "refresh_expires_at": refresh_expires, "user": dict(profile)}
 
     def register(self, body: RegisterRequest, ip: str):
@@ -328,7 +340,7 @@ class AuthService:
                 if not db.execute("SELECT 1 FROM users WHERE email=?", (body.email,)).fetchone():
                     user = {"id": str(uuid.uuid4()), "email": body.email}
                     name = body.username or "Player_" + user["id"].replace("-", "")[:8]
-                    db.execute("INSERT INTO users(id,email,password_hash,created_at,username) VALUES(?,?,?,?,?)", (user["id"], user["email"], encoded, self.now(), name))
+                    db.execute("INSERT INTO users(id,email,password_hash,created_at,username,tutorial_state) VALUES(?,?,?,?,?,'pending')", (user["id"], user["email"], encoded, self.now(), name))
                     result = self.new_session(db, user)
         if result is None:
             raise ApiError(400, "invalid_code", "This code is invalid or expired. Please request a new code.")
@@ -381,7 +393,7 @@ class AuthService:
         authorization = request.headers.get("Authorization", "")
         if not authorization.startswith("Bearer ") or not 40 <= len(authorization[7:]) <= 128:
             raise ApiError(401, "session_expired", "Please log in again.")
-        user = db.execute("SELECT u.id,u.email,u.username FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.access_hash=? AND s.access_expires>? AND s.refresh_expires>?", (self.digest(authorization[7:]), self.now(), self.now())).fetchone()
+        user = db.execute("SELECT u.id,u.email,u.username,u.tutorial_state FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.access_hash=? AND s.access_expires>? AND s.refresh_expires>?", (self.digest(authorization[7:]), self.now(), self.now())).fetchone()
         if not user:
             raise ApiError(401, "session_expired", "Please log in again.")
         return dict(user)
@@ -396,6 +408,15 @@ class AuthService:
             self.rate_limit(db, "profile:user:" + user["id"], 60, 10)
             db.execute("UPDATE users SET username=? WHERE id=?", (body.username, user["id"]))
             return {**user, "username": body.username}
+
+    def finish_tutorial(self, body: TutorialRequest, request: Request):
+        with self.transaction() as db:
+            user = self.authenticated_user(db, request)
+            state = user["tutorial_state"]
+            if state == "pending":
+                db.execute("UPDATE users SET tutorial_state=? WHERE id=?", (body.state, user["id"]))
+                state = body.state
+            return {"tutorial_state": state}
 
     def logout(self, body: RefreshRequest):
         with self.transaction() as db:
@@ -549,6 +570,10 @@ def create_app(settings: Settings, sender=None, clock=time.time):
     @app.patch("/api/v1/me")
     def update_profile(body: ProfileRequest, request: Request):
         return service.update_profile(body, request)
+
+    @app.post("/api/v1/me/tutorial")
+    def finish_tutorial(body: TutorialRequest, request: Request):
+        return service.finish_tutorial(body, request)
 
     @app.post("/api/v1/ranked-runs", status_code=201)
     def start_ranked_run(body: StartRun, request: Request):

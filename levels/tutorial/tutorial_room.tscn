@@ -1,0 +1,20 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://levels/survival/survival_arena.tscn" id="1"]
+[ext_resource type="Script" path="res://levels/tutorial/tutorial_room.gd" id="2"]
+[ext_resource type="PackedScene" path="res://tile_maps/survival_dungeon.tscn" id="3"]
+[ext_resource type="Script" path="res://levels/tutorial/tutorial_hud.gd" id="4"]
+[ext_resource type="Script" path="res://levels/tutorial/tutorial_actions.gd" id="5"]
+
+[node name="TutorialRoom" instance=ExtResource("1")]
+script = ExtResource("2")
+
+[node name="SurvivalHud" parent="." index="3"]
+script = ExtResource("4")
+
+[node name="Dungeon" parent="." index="4" instance=ExtResource("3")]
+
+[node name="TutorialActions" type="CanvasLayer" parent="." index="5"]
+layer = 13
+process_mode = 3
+script = ExtResource("5")
