@@ -93,7 +93,7 @@ func _build() -> void:
 		header.add_child(label)
 	_scroll = ScrollContainer.new()
 	_scroll.position = Vector2(18, 73)
-	_scroll.size = Vector2(402, 108)
+	_scroll.size = Vector2(402, 98)
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	panel.add_child(_scroll)
 	_rows_box = VBoxContainer.new()
@@ -101,35 +101,35 @@ func _build() -> void:
 	_rows_box.add_theme_constant_override("separation", 1)
 	_scroll.add_child(_rows_box)
 	var divider := ColorRect.new()
-	divider.position = Vector2(18, 184)
+	divider.position = Vector2(18, 175)
 	divider.size = Vector2(402, 1)
 	divider.color = DungeonTheme.GOLD.darkened(0.25)
 	panel.add_child(divider)
 	_identity = _label("CURRENT PLAYER  GUEST", 9)
-	_identity.position = Vector2(18, 188)
-	_identity.size = Vector2(402, 12)
+	_identity.position = Vector2(18, 176)
+	_identity.size = Vector2(402, 14)
 	_identity.add_theme_font_override("font", _name_font)
 	_identity.clip_text = true
 	_identity.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_identity.add_theme_color_override("font_color", DungeonTheme.GOLD_BRIGHT)
 	panel.add_child(_identity)
 	_local_best = _label("BEST KILLS  0   |   Sign in or complete a ranked run for your online best.", 8)
-	_local_best.position = Vector2(18, 200)
+	_local_best.position = Vector2(18, 190)
 	_local_best.size = Vector2(402, 12)
 	panel.add_child(_local_best)
-	_near_button = _button("NEAR ME", Rect2(18, 216, 90, 22))
+	_near_button = _button("NEAR ME", Rect2(18, 208, 90, 22))
 	_near_button.pressed.connect(_toggle_near_me)
 	panel.add_child(_near_button)
-	_refresh_button = _button("REFRESH", Rect2(112, 216, 92, 22))
+	_refresh_button = _button("REFRESH", Rect2(112, 208, 92, 22))
 	_refresh_button.pressed.connect(_refresh_pressed)
 	panel.add_child(_refresh_button)
-	_more_button = _button("MORE", Rect2(208, 216, 78, 22))
+	_more_button = _button("MORE", Rect2(208, 208, 78, 22))
 	_more_button.pressed.connect(_more_pressed)
 	panel.add_child(_more_button)
 	_close_button.focus_neighbor_top = _close_button.get_path()
 	_close_button.focus_neighbor_bottom = _close_button.get_path()
 	var hint := _label("ESC / X: CLOSE", 8)
-	hint.position = Vector2(292, 221)
+	hint.position = Vector2(292, 213)
 	hint.size = Vector2(124, 12)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	hint.add_theme_color_override("font_color", DungeonTheme.MUTED)
@@ -139,18 +139,23 @@ func _build() -> void:
 
 func _label(value: String, font_size: int) -> Label:
 	var label := Label.new()
-	label.text = value
+	label.theme = DungeonTheme.THEME
 	label.add_theme_font_size_override("font_size", font_size)
+	label.text = value
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return label
 
 
 func _button(value: String, rect: Rect2) -> Button:
 	var button := Button.new()
+	# 先固定字号，再设置文字和尺寸，避免默认字号把按钮提前撑高。
+	button.theme = DungeonTheme.THEME
+	button.add_theme_font_size_override("font_size", 8)
 	button.text = value
 	button.position = rect.position
 	button.size = rect.size
-	button.add_theme_font_size_override("font_size", 8)
+	# 挂入父节点并刷新主题最小尺寸后再收紧，避免保留构建期间的旧高度。
+	button.set_size.call_deferred(rect.size)
 	return button
 
 

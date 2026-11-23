@@ -243,6 +243,7 @@ func show_result( victory : bool, kills : int, best : int ) -> void:
 	result_extra.text = "KILLS %d   BEST KILLS %d\n%s" % [kills, best_for_run, "NEW BEST KILLS!" if new_best else ""]
 	_update_result_ranking_label(result)
 	trophy.visible = victory
+	_layout_result(victory)
 	if victory:
 		AudioManager.stop_music()
 		congrats_music.play()
@@ -255,6 +256,16 @@ func show_result( victory : bool, kills : int, best : int ) -> void:
 	title_button.focus_neighbor_left = leaderboard_button.get_path() if leaderboard_button.visible else retry_button.get_path()
 	get_tree().paused = true
 	retry_button.grab_focus.call_deferred()
+
+
+## 失败页没有奖杯；将整组内容上移，保持上下留白相等。胜利页保留奖杯位置。
+func _layout_result(victory: bool) -> void:
+	var shift := 0.0 if victory else -34.0
+	result_title.position.y = 112.0 + shift
+	result_stats.position.y = 145.0 + shift
+	result_extra.position.y = 161.0 + shift
+	ranking_label.position.y = 184.0 + shift
+	result_panel.get_node("Buttons").position.y = 194.0 + shift
 
 
 func hide_result() -> void:

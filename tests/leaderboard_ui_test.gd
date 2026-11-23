@@ -38,6 +38,51 @@ func _capture(name: String) -> void:
 	_check(get_viewport().get_texture().get_image().save_png(path.path_join(name + ".png")) == OK, "Save preview " + name)
 
 
+func _check_board_layout(panel: LeaderboardPanel) -> void:
+	var frame: Control = panel._root.get_node("Panel")
+	var original_size := get_window().size
+	var original_focus := get_viewport().gui_get_focus_owner()
+	for resolution in [Vector2i(1280, 720), Vector2i(1440, 810), Vector2i(1920, 1080)]:
+		get_window().size = resolution
+		await _wait(0.03)
+		var interior := frame.get_global_rect().grow(-7)
+		_check(panel._identity.get_global_rect().end.y <= panel._local_best.global_position.y, "Identity and personal best do not overlap")
+		for button: Button in [panel._near_button, panel._refresh_button, panel._more_button]:
+			var disabled := button.disabled
+			button.disabled = false
+			button.grab_focus()
+			await _wait(0.02)
+			_check(interior.encloses(button.get_global_rect().grow(2)), "Footer button and focus fit inside frame at %s: %s %s" % [resolution, button.text, button.get_global_rect()])
+			_check(button.size.y <= 22, "Compact footer keeps requested height: %s" % button.size)
+			_check(panel._local_best.get_global_rect().end.y + 4 <= button.global_position.y, "Footer does not overlap personal best: %s / %s" % [panel._local_best.get_global_rect(), button.get_global_rect()])
+			button.disabled = disabled
+	get_window().size = original_size
+	if is_instance_valid(original_focus):
+		original_focus.grab_focus()
+	await _wait(0.03)
+
+
+func _check_failure_layout(hud: SurvivalHud) -> void:
+	var original_size := get_window().size
+	var buttons: Control = hud.result_panel.get_node("Buttons")
+	for resolution in [Vector2i(1280, 720), Vector2i(1440, 810), Vector2i(1920, 1080)]:
+		get_window().size = resolution
+		await _wait(0.03)
+		var content_top := hud.result_title.global_position.y
+		var content_bottom := buttons.get_global_rect().end.y
+		_check(absf((content_top + content_bottom) * 0.5 - 132.0) <= 2.0, "Failure content vertically centered at %s" % resolution)
+		_check(hud.result_title.get_global_rect().end.y <= hud.result_stats.global_position.y, "Failure title and stats do not overlap")
+		_check(not hud.trophy.visible, "Failure has no empty trophy placeholder")
+		await _capture("failure-centered-%d" % resolution.x)
+	# Reusing this HUD for victory must restore the trophy layout without accumulating offsets.
+	hud._layout_result(true)
+	_check(is_equal_approx(hud.result_title.position.y, 112.0), "Victory restores original title position")
+	hud._layout_result(false)
+	_check(is_equal_approx(hud.result_title.position.y, 78.0), "Repeated failure layout is stable")
+	get_window().size = original_size
+	await _wait(0.03)
+
+
 func _run() -> void:
 	if not OS.get_environment("APPDATA").replace("\\", "/").contains("/.stage1_checks/"):
 		push_error("Use isolated APPDATA under .stage1_checks for UI tests")
@@ -99,6 +144,7 @@ func _run() -> void:
 	_check(name_label.size.x <= 176 and name_label.position.x + name_label.size.x < 232, "Long Chinese label stays inside name column")
 	_check(not panel._rows_box.get_child(3).tooltip_text.is_empty(), "Full name available as row tooltip")
 	_check(panel._rows_box.size.x <= 402, "Sample rows do not cause horizontal overflow")
+	await _check_board_layout(panel)
 	await _capture("sample-board")
 	var cancel := InputEventAction.new()
 	cancel.action = "ui_cancel"
@@ -209,6 +255,7 @@ func _run() -> void:
 	RunStats.finish_run(false, 18)
 	hud.show_result(false, 18, 0)
 	_check(hud.result_stats.text.contains("SESSION TIME") and hud.ranking_label.text.contains("CONTINUED RUN"), "Continued result explains timing and qualification")
+	await _check_failure_layout(hud)
 	await _capture("continued-result")
 	hud.hide_result()
 	RunStats.abandon_run()
