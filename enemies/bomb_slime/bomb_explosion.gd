@@ -9,7 +9,7 @@ const SHEET : Texture2D = preload( "res://enemies/bomb_slime/bomb.png" )
 const SOUND : AudioStream = preload( "res://enemies/bomb_slime/bomb_explosion.wav" )
 ## 精灵表 384x384：3x3 格，每格 128x128。第 1 格是 4 列 x 3 行的 32x32 小炸弹，其余 8 格是爆炸帧
 const CELL : int = 128
-const BOMB_ICON := Rect2( 0, 0, 32, 32 )
+const FUSE_ATLAS := preload( "res://enemies/art_v2/bomb_fuse.png" )
 const EXPLOSION_CELLS : Array[Vector2i] = [
 	Vector2i( 1, 0 ), Vector2i( 2, 0 ), Vector2i( 0, 1 ), Vector2i( 1, 1 ),
 	Vector2i( 2, 1 ), Vector2i( 0, 2 ), Vector2i( 1, 2 ), Vector2i( 2, 2 ),
@@ -51,9 +51,8 @@ static func arm( parent : Node, world_pos : Vector2, p_radius : float, p_fuse : 
 
 func _ready() -> void:
 	_icon = Sprite2D.new()
-	_icon.texture = SHEET
-	_icon.region_enabled = true
-	_icon.region_rect = BOMB_ICON
+	_icon.texture = FUSE_ATLAS
+	_icon.hframes = 4
 	_icon.position = CENTER_OFFSET
 	add_child( _icon )
 
@@ -69,8 +68,7 @@ func _process( delta : float ) -> void:
 	var t := _age / fuse_time
 	var s := 1.0 + 0.6 * t
 	_icon.scale = Vector2( s, s )
-	var flash := int( _age * ( 8.0 + 16.0 * t ) ) % 2 == 0
-	_icon.modulate = Color( 1.6, 0.5, 0.4 ) if flash else Color( 2.0, 2.0, 2.0 )
+	_icon.frame = int( _age * ( 9.0 + 13.0 * t ) ) % _icon.hframes
 	queue_redraw()
 
 

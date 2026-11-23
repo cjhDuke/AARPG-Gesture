@@ -1,7 +1,7 @@
 class_name Arrow extends EnemyProjectile
 ## 弓手的箭：32x8 的精灵（箭头朝 +x），速度 120、伤害 1，直线飞行
 
-const TEXTURE : Texture2D = preload( "res://enemies/archer_goblin/arrow.png" )
+const TEXTURE : Texture2D = preload( "res://enemies/art_v2/archer_arrow.png" )
 
 
 func _build_visual() -> void:

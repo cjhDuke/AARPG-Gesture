@@ -3,13 +3,16 @@
 [ext_resource type="PackedScene" path="res://enemies/goblin/goblin.tscn" id="1_gob"]
 [ext_resource type="Script" path="res://enemies/shield_goblin/shield_goblin.gd" id="2_shield"]
 
+[ext_resource type="Texture2D" path="res://enemies/art_v2/shield_goblin.png" id="art_body"]
+
 [node name="ShieldGoblin" instance=ExtResource("1_gob")]
 script = ExtResource("2_shield")
 hp = 3
 apple_drop_chance = 0.25
 
 [node name="Sprite2D" parent="." index="3"]
-self_modulate = Color(0.7, 0.85, 1.6, 1)
+texture = ExtResource("art_body")
+hframes = 14
 
 [node name="Approach" parent="EnemyStateMachine" index="0"]
 speed = 35.0

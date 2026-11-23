@@ -11,6 +11,8 @@ class_name BombSlime extends Enemy
 @export var blast_player_damage : int = 1
 @export var blast_enemy_damage : int = 2
 
+static var _spark_points: PackedVector2Array
+
 var _marks : Node2D
 var _time : float = 0.0
 
@@ -18,7 +20,9 @@ var _time : float = 0.0
 func _ready() -> void:
 	super._ready()
 	enemy_destroyed.connect( _on_bomb_destroyed )
-	# 引信火花画在精灵之上
+	if _spark_points.is_empty():
+		_cache_spark_points()
+	# 像素亮点跟随精灵里的引信。
 	_marks = Node2D.new()
 	_marks.draw.connect( _draw_fuse )
 	add_child( _marks )
@@ -30,19 +34,32 @@ func _process( delta : float ) -> void:
 	_marks.queue_redraw()
 
 
-## 头顶一小段弯曲的引信，末端是闪烁的火花
+## 每格引信在胶体压扁、起跳和转身时位置不同。由图集顶部的亮点定位一次。
+func _cache_spark_points() -> void:
+	var image := sprite_2d.texture.get_image()
+	for frame_id in sprite_2d.hframes * sprite_2d.vframes:
+		var cell := Vector2i( frame_id % sprite_2d.hframes, frame_id / sprite_2d.hframes )
+		var frame_image := image.get_region( Rect2i( cell * 64, Vector2i( 64, 64 ) ) )
+		var ink := frame_image.get_used_rect()
+		var tip := Vector2( ink.get_center().x, ink.position.y )
+		var brightness := 0.0
+		for y in range( ink.position.y, mini( ink.position.y + 7, ink.end.y ) ):
+			for x in range( ink.position.x, ink.end.x ):
+				var pixel := frame_image.get_pixel( x, y )
+				if pixel.a > 0.5 and pixel.r > 0.6 and pixel.g > pixel.b + 0.1 and pixel.r + pixel.g > brightness:
+					tip = Vector2( x, y )
+					brightness = pixel.r + pixel.g
+		_spark_points.append( tip - Vector2( 32, 32 ) )
+
+
 func _draw_fuse() -> void:
-	var base := Vector2( 0, -19 )
-	var mid := Vector2( 2, -22 )
-	var tip := Vector2( 5, -23 )
-	_marks.draw_line( base, mid, Color( 0.25, 0.15, 0.1 ), 1.0 )
-	_marks.draw_line( mid, tip, Color( 0.25, 0.15, 0.1 ), 1.0 )
-	var on := int( _time * 14.0 ) % 2 == 0
-	var c := Color( 1.0, 0.95, 0.4 ) if on else Color( 1.0, 0.5, 0.1 )
-	var r := 2.0 if on else 1.0
-	_marks.draw_line( tip + Vector2( -r - 1, 0 ), tip + Vector2( r + 1, 0 ), c, 1.0 )
-	_marks.draw_line( tip + Vector2( 0, -r - 1 ), tip + Vector2( 0, r + 1 ), c, 1.0 )
-	_marks.draw_rect( Rect2( tip + Vector2( -0.5, -0.5 ), Vector2( 1, 1 ) ), Color.WHITE )
+	if int( _time * 14.0 ) % 2 != 0:
+		return
+	var tip := _spark_points[sprite_2d.frame]
+	tip.x *= sprite_2d.scale.x
+	tip = ( tip + sprite_2d.position ).round()
+	_marks.draw_rect( Rect2( tip - Vector2.ONE, Vector2( 3, 3 ) ), Color( 1.0, 0.69, 0.16, 0.55 ) )
+	_marks.draw_rect( Rect2( tip, Vector2.ONE ), Color( 1.0, 0.97, 0.73 ) )
 
 
 func _on_bomb_destroyed( _hit_box : HitBox ) -> void:

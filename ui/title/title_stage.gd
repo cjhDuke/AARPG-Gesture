@@ -5,8 +5,8 @@ class_name TitleStage extends Node2D
 ## 坐标是屏幕坐标（480×270），本节点放在标题 UI 的 Control 下，上面再盖一层压暗遮罩。
 ## 帧号全部抄自 slime.tscn / goblin.tscn / player.tscn 里的动画轨道。
 
-const SLIME_TEX: Texture2D = preload("res://enemies/slime/slime.png")
-const GOBLIN_TEX: Texture2D = preload("res://enemies/goblin/goblin.png")
+const SLIME_TEX: Texture2D = preload("res://enemies/art_v2/slime_legacy.png")
+const GOBLIN_TEX: Texture2D = preload("res://enemies/art_v2/goblin_legacy.png")
 const PLAYER_TEX: Texture2D = preload("res://player/sprites/player_sprite.png")
 const ATTACK_TEX: Texture2D = preload("res://player/sprites/attack_sprite01.png")
 const SMOKE_TEX: Texture2D = preload("res://enemies/slime/destroy_smoke.png")

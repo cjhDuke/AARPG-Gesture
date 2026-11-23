@@ -3,13 +3,21 @@
 [ext_resource type="PackedScene" path="res://enemies/slime/slime.tscn" id="1_slime"]
 [ext_resource type="Script" path="res://enemies/bomb_slime/bomb_slime.gd" id="2_bomb"]
 
+[ext_resource type="Texture2D" path="res://enemies/art_v2/bomb_slime.png" id="art_body"]
+
 [node name="BombSlime" instance=ExtResource("1_slime")]
 script = ExtResource("2_bomb")
 hp = 2
 apple_drop_chance = 0.08
 
+[node name="ShadowSprite2D" parent="." index="2"]
+modulate = Color(0, 0, 0, 0.52)
+
 [node name="Sprite2D" parent="." index="3"]
-self_modulate = Color(1.2, 0.15, 0.35, 1)
+texture = ExtResource("art_body")
+hframes = 13
+idle_columns = PackedInt32Array(0, 11, 12, 11)
+defeat_columns = PackedInt32Array(9, 10, 10)
 
 [node name="Approach" parent="EnemyStateMachine" index="0"]
 speed = 38.0

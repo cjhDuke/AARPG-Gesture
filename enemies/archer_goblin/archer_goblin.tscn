@@ -4,13 +4,17 @@
 [ext_resource type="Script" path="res://enemies/archer_goblin/archer_goblin.gd" id="2_archer"]
 [ext_resource type="Script" path="res://enemies/scripts/states/enemy_state_archer.gd" id="3_state"]
 
+[ext_resource type="Texture2D" path="res://enemies/art_v2/archer_goblin.png" id="art_body"]
+
 [node name="ArcherGoblin" instance=ExtResource("1_gob")]
 script = ExtResource("2_archer")
 hp = 2
 apple_drop_chance = 0.2
 
 [node name="Sprite2D" parent="." index="3"]
-self_modulate = Color(0.55, 1.5, 0.55, 1)
+texture = ExtResource("art_body")
+hframes = 15
+extra_poses = Dictionary[StringName, int]({&"bow_raise": 11, &"bow_aim": 12, &"bow_release": 13, &"bow_recover": 14})
 
 [node name="Approach" parent="EnemyStateMachine" index="0"]
 script = ExtResource("3_state")

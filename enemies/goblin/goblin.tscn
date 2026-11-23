@@ -4,8 +4,9 @@
 [ext_resource type="Script" uid="uid://d3hrwgkdyaam2" path="res://enemies/scripts/enemy.gd" id="1_e6gxc"]
 [ext_resource type="PackedScene" uid="uid://xjojbl1e3882" path="res://components/hit_box/hit_box.tscn" id="2_egddf"]
 [ext_resource type="PackedScene" uid="uid://chqll71vii5yb" path="res://components/hurt_box/hurt_box.tscn" id="3_3xcr1"]
+[ext_resource type="Script" path="res://enemies/scripts/enemy_art_sprite.gd" id="art_sprite"]
 [ext_resource type="Texture2D" uid="uid://b8bduxd7punv5" path="res://player/sprites/shadow.png" id="4_fuxiv"]
-[ext_resource type="Texture2D" uid="uid://djofci7i2ecbn" path="res://enemies/goblin/goblin.png" id="5_egddf"]
+[ext_resource type="Texture2D" path="res://enemies/art_v2/goblin.png" id="5_egddf"]
 [ext_resource type="Script" uid="uid://cg8o7blouk1jc" path="res://enemies/scripts/enemy_state_machine.gd" id="5_hvprn"]
 [ext_resource type="Script" uid="uid://devv3gbg7xlg7" path="res://enemies/scripts/states/enemy_state_stun.gd" id="8_l2k1h"]
 [ext_resource type="Script" uid="uid://dlspkm2wj7d6b" path="res://enemies/scripts/states/enemy_state_destroy.gd" id="9_4i25o"]
@@ -704,8 +705,9 @@ texture = ExtResource("4_fuxiv")
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=1382304475]
 position = Vector2(0, -14)
 texture = ExtResource("5_egddf")
-hframes = 8
+hframes = 11
 vframes = 3
+script = ExtResource("art_sprite")
 
 [node name="AttackHitBox" parent="Sprite2D" unique_id=1395499591 instance=ExtResource("2_egddf")]
 position = Vector2(0, 11)

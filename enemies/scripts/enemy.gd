@@ -40,6 +40,8 @@ var spawning : bool = false
 func _ready() -> void:
 	# 高台（Ledge 层）挡敌人；地牢里没有这一层的物体，不影响
 	collision_mask |= LEDGE_LAYER
+	if sprite_2d is EnemyArtSprite:
+		sprite_2d.install( animation_player )
 	state_machine.initialize( self )
 	player = PlayerManager.player 
 	hurt_box.Damaged.connect( _take_damage )
@@ -86,8 +88,10 @@ func set_direction( _new_direction : Vector2 ) -> bool:
 	
 	
 func update_animation( state : String ) -> void:
-	animation_player.play(state + "_" + anim_direction())
-	pass
+	var facing := anim_direction()
+	animation_player.play( state + "_" + facing )
+	if state == "destroy" and sprite_2d is EnemyArtSprite:
+		sprite_2d.show_defeat_start( facing )
 	
 func anim_direction() -> String:
 	if cardinal_direction == Vector2.DOWN:

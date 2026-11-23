@@ -18,8 +18,8 @@ signal segment_cleared(segment: int)
 
 enum Phase { ENTER, SHIELD, STUN, DYING, DEAD }
 
-const CLOAK : Texture2D = preload( "res://enemies/wizard_boss/boss_cloak.png" )
-const HANDS : Texture2D = preload( "res://enemies/wizard_boss/boss_hand.png" )
+const CLOAK : Texture2D = preload( "res://enemies/art_v2/boss_cloak_actions.png" )
+const HANDS : Texture2D = preload( "res://enemies/art_v2/boss_hand.png" )
 const SND_HURT : AudioStream = preload( "res://enemies/wizard_boss/boss_hurt.wav" )
 const SND_FIREBALL : AudioStream = preload( "res://enemies/wizard_boss/boss_fireball.wav" )
 const SND_FIREBALL_HIT : AudioStream = preload( "res://enemies/wizard_boss/boss_fireball_hit.wav" )
@@ -157,7 +157,7 @@ func _ready() -> void:
 func _build_nodes() -> void:
 	_cloak = Sprite2D.new()
 	_cloak.texture = CLOAK
-	_cloak.hframes = 9
+	_cloak.hframes = 10
 	_cloak.position = Vector2( 0, -7 )
 	add_child( _cloak )
 	_hand_l = _make_hand( false )
@@ -591,10 +591,17 @@ func _play( stream : AudioStream, volume_db : float = 0.0, pitch : float = 1.0, 
 
 
 func _update_visuals() -> void:
-	# 披风：正面 3 帧循环；破绽阶段停在第 0 帧
-	var cloak_frame : int = 0
-	if phase != Phase.STUN:
-		cloak_frame = [ 0, 1, 2, 1 ][ int( _anim_t * 5.0 ) % 4 ]
+	var cloak_frame: int = [ 1, 2, 3, 2 ][ int( _anim_t * 5.0 ) % 4 ]
+	if phase == Phase.ENTER and _anim_t < enter_time * 0.25:
+		cloak_frame = 0
+	elif phase == Phase.STUN:
+		cloak_frame = 6 if _fall_t >= 1.0 else 5
+	elif phase == Phase.DYING:
+		cloak_frame = 8 if _dying_t < 0.55 else 9
+	elif _charging:
+		cloak_frame = 4
+	if phase != Phase.DYING and ( _flash_left > 0.0 or _stagger_left > 0.0 ):
+		cloak_frame = 7
 	_cloak.frame = cloak_frame
 	# 抖动：踉跄、死亡、眩晕
 	var shake := Vector2.ZERO
@@ -610,15 +617,19 @@ func _update_visuals() -> void:
 	var bob := sin( _anim_t * 3.0 ) * 2.0
 	var lp := Vector2( -40, 8 + bob )
 	var rp := Vector2( 40, 8 - bob )
-	var fr := 1
+	var fr: int = [ 1, 3, 1, 4 ][ int( _anim_t * 5.0 ) % 4 ]
 	if _charging:
 		lp = Vector2( -22, -2 )
 		rp = Vector2( 22, -2 )
-		fr = 2
+		fr = 5 if _charge_left > charge_time * 0.6 else ( 2 if _charge_left > charge_time * 0.2 else 6 )
 	elif phase == Phase.STUN:
 		lp = Vector2( -36, 24 )
 		rp = Vector2( 36, 24 )
-		fr = 0
+		fr = 0 if _fall_t >= 1.0 else 9
+	elif phase == Phase.DYING:
+		lp = Vector2( -39, 19 )
+		rp = Vector2( 39, 19 )
+		fr = 11 if _dying_t < 0.55 else 14
 	_hand_l.position = lp + shake
 	_hand_r.position = rp + shake
 	_hand_l.frame = fr
