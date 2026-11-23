@@ -10,13 +10,17 @@ const COL_BACK := DungeonTheme.BACKGROUND
 const COL_FULL := Color( "#b568a3" )
 const COL_HURT := DungeonTheme.TEXT
 const COL_EDGE := DungeonTheme.GOLD
+## 屏幕右下，底部状态行上方，错开左侧强化栏和巫师飞行区域。
+const HINT_RECT := Rect2( 72, 190, 234, 32 )
 
 var round_idx : int = 0
 var seg_hp : int = 10
 var seg_max : int = 10
+var boss : WizardBoss
 ## 刚受伤的闪白时间
 var _flash : float = 0.0
 var _name : Label
+var _hint : Label
 
 
 func _ready() -> void:
@@ -30,6 +34,15 @@ func _ready() -> void:
 	_name.add_theme_constant_override( "outline_size", 3 )
 	_name.position = Vector2( -36, -3 )
 	add_child( _name )
+	_hint = Label.new()
+	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hint.add_theme_font_size_override( "font_size", 8 )
+	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_hint.position = HINT_RECT.position
+	_hint.size = HINT_RECT.size
+	add_child( _hint )
+	_update_hint()
 
 
 func set_hp( round_no : int, hp : int, hp_max : int ) -> void:
@@ -42,15 +55,33 @@ func set_hp( round_no : int, hp : int, hp_max : int ) -> void:
 
 
 func _process( delta : float ) -> void:
+	_update_hint()
 	if _flash > 0.0:
 		_flash = maxf( _flash - delta, 0.0 )
 		queue_redraw()
 
 
+func _update_hint() -> void:
+	var show_hint := is_instance_valid( boss ) and boss.active and ( boss.shielded or boss.vulnerable )
+	if _hint.visible != show_hint:
+		_hint.visible = show_hint
+		queue_redraw()
+	if not show_hint:
+		return
+	if boss.shielded:
+		_hint.text = "BOOMERANG: KEEP ALL 4 FLAMES OUT\nFIST / HOLD L + ARROWS   |   %d/4 OUT" % boss.torches_out()
+	else:
+		_hint.text = "SHIELD DOWN! ATTACK THE WIZARD\n%dS LEFT" % ceili( boss.vulnerable_seconds_left() )
+
+
 func _draw() -> void:
 	# The compact rail uses a thin copper frame; the three phase fills stay distinct.
-	draw_rect( Rect2( -39, -5, 221, 17 ), DungeonTheme.BACKGROUND )
-	draw_rect( Rect2( -39, -5, 221, 17 ), DungeonTheme.GOLD, false, 1.0 )
+	var frame := Rect2( -39, -5, 221, 17 )
+	draw_rect( frame, DungeonTheme.BACKGROUND )
+	draw_rect( frame, DungeonTheme.GOLD, false, 1.0 )
+	if _hint.visible:
+		draw_rect( HINT_RECT, DungeonTheme.BACKGROUND )
+		draw_rect( HINT_RECT, DungeonTheme.GOLD, false, 1.0 )
 	for slot in SEGMENTS:
 		# 从左到右的第 slot 格对应第 (SEGMENTS - 1 - slot) 轮
 		var r := SEGMENTS - 1 - slot

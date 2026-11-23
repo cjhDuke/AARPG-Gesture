@@ -202,7 +202,7 @@ func _begin_boss() -> void:
 	_boss.hp_changed.connect( hud.set_boss_hp )
 	_boss.defeated.connect( _on_boss_defeated )
 	_boss.segment_cleared.connect(_on_boss_segment_cleared)
-	hud.show_boss_bar()
+	hud.show_boss_bar( _boss )
 	hud.set_boss_hp( 1, _boss.seg_hp, _boss.segment_hp )
 	_update_status()
 	_autosave_wave.call_deferred(_run_id)

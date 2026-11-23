@@ -15,6 +15,7 @@ const BOWL_Y : float = 32.0
 const HIT_CENTER := Vector2( 0, -24 )
 const HIT_RADIUS : float = 18.0
 const ENEMY_HURT_LAYER : int = 256
+const WALL_LAYER : int = 16
 
 var lit : bool = true
 var relight_total : float = 8.0
@@ -28,6 +29,17 @@ var _hurt : HurtBox
 func _ready() -> void:
 	add_to_group( "boss_fx" )
 	z_index = 2
+	# 只阻挡脚下的底座。火焰受击判定独立，熄灭后底座仍在。
+	var base := StaticBody2D.new()
+	base.collision_layer = WALL_LAYER
+	base.collision_mask = 0
+	var footprint := CollisionShape2D.new()
+	var rect := RectangleShape2D.new()
+	rect.size = Vector2( 24, 8 )
+	footprint.position = Vector2( 0, -5 )
+	footprint.shape = rect
+	base.add_child( footprint )
+	add_child( base )
 	# 念力爆破走 HitBox / HurtBox：放一个敌人受击层上的 HurtBox 接它（镖在 _process 里按位置检测）
 	_hurt = HurtBox.new()
 	_hurt.collision_layer = ENEMY_HURT_LAYER

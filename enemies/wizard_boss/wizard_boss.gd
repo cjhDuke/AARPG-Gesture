@@ -228,6 +228,10 @@ func relight_time() -> float:
 	return relight_times[clampi( round_idx, 0, ROUNDS - 1 )] * relight_scale
 
 
+func vulnerable_seconds_left() -> float:
+	return maxf( _stun_left, 0.0 ) if vulnerable else 0.0
+
+
 ## 剩余总血量（所有段）
 func total_hp() -> int:
 	return ( ROUNDS - 1 - round_idx ) * segment_hp + seg_hp

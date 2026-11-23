@@ -34,6 +34,42 @@ func _elapsed() -> int:
 	return int(RunStats.get_run_snapshot()["elapsed_ms"])
 
 
+func _base_blocks_player(location: Vector2, torch: BossTorch) -> bool:
+	var contact := KinematicCollision2D.new()
+	var start := Transform2D(0.0, location + Vector2(0, 22))
+	if not PlayerManager.player.test_move(start, Vector2(0, -32), contact):
+		return false
+	var body := contact.get_collider() as StaticBody2D
+	return body != null and body.get_parent() == torch
+
+
+func _check_boss_torches(arena: SurvivalArena) -> void:
+	var boss := arena._boss
+	var hint := arena.hud._boss_bar._hint
+	var fire := boss.torches[0]
+	var base_pos := fire.global_position
+	_check(hint.is_visible_in_tree() and hint.text.contains("0/4 OUT"), "Shield objective starts visible with live torch count")
+	_check(hint.get_global_rect().end.y < 250.0 and hint.get_minimum_size().x <= hint.size.x, "Boss objective fits above the status strip")
+	for torch in boss.torches:
+		_check(_base_blocks_player(torch.global_position, torch), "Player cannot walk through a lit brazier base")
+	await _capture("wizard-shield-hint")
+	var rang := preload("res://player/boomerang.tscn").instantiate() as Boomerang
+	arena.add_child(rang)
+	rang.set_physics_process(false)
+	rang.state = Boomerang.State.GUIDED
+	rang.global_position = fire.hit_center() - Boomerang.SPRITE_OFFSET
+	_check(await _until(func() -> bool: return not fire.lit and hint.text.contains("1/4 OUT"), 1.0), "Actual guided boomerang douses flame and updates counter")
+	_check(_base_blocks_player(base_pos, fire), "Unlit brazier base still blocks the player")
+	rang.queue_free()
+	fire.relight_left = 0.0
+	_check(await _until(func() -> bool: return fire.lit and hint.text.contains("0/4 OUT"), 1.0), "Relighting removes the flame from the extinguished count")
+	for torch in boss.torches:
+		boss.douse(torch)
+	_check(await _until(func() -> bool: return boss.vulnerable and hint.text.contains("SHIELD DOWN") and hint.text.contains("5S LEFT"), 1.0), "Four doused flames open the timed attack window")
+	await _capture("wizard-stun-hint")
+	_check(await _until(func() -> bool: return hint.text.contains("4S LEFT"), 2.0), "Vulnerability hint counts down")
+
+
 func _capture(name: String) -> void:
 	if not OS.get_cmdline_user_args().has("--capture-previews") or DisplayServer.get_name() == "headless":
 		return
@@ -144,6 +180,8 @@ func _run() -> void:
 	await _wait(0.1)
 	_check(_elapsed() > before + 50, "Boss battle clock resumes")
 	var boss := arena._boss
+	await _check_boss_torches(arena)
+	var old_torches := boss.torches.duplicate()
 	var hit := HitBox.new()
 	hit.damage = boss.segment_hp
 	for segment in range(1, 4):
@@ -159,6 +197,7 @@ func _run() -> void:
 		get_tree().quit(1)
 		return
 	_check(RunStats.get_last_result()["victory"], "Victory result recorded")
+	_check(not arena.hud.is_boss_bar_visible() and old_torches.all(func(torch: Variant) -> bool: return not is_instance_valid(torch)), "Victory removes boss hints and all brazier bodies")
 	_check(RunStats.get_last_result()["elapsed_ms"] == before, "Victory result does not count death animation")
 	_check(RunStats.get_last_result()["ranking_status"] == "NOT RANKED", "Candidate never claims online upload")
 	await _capture("actual-victory")

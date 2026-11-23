@@ -150,10 +150,11 @@ func set_status( stage : int, wave : int, total_waves : int, kills : int, best :
 
 
 ## 显示 Boss 血条（名字固定 WIZARD）
-func show_boss_bar() -> void:
+func show_boss_bar( boss : WizardBoss ) -> void:
 	if _boss_bar == null:
 		_boss_bar = BossBar.new()
 		_boss_bar.position = BOSS_BAR_POS
+		_boss_bar.boss = boss
 		gameplay.add_child( _boss_bar )
 	_boss_bar.visible = true
 
