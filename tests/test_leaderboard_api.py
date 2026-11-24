@@ -6,6 +6,7 @@ import asyncio
 from contextlib import closing
 import json
 import os
+import re
 from pathlib import Path
 import sqlite3
 import sys
@@ -102,6 +103,64 @@ class LeaderboardApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201, response.text)
         return self.finish(response.json()["run_id"], key=key, milestones=list(milestones), victory=victory,
                            kills=kills, **changes)[0]
+
+    def test_campaign_rankings_keep_nine_and_eleven_milestones_independent(self):
+        legacy, _ = self.start()
+        modern, _ = self.start(ruleset_id="survival_v2")
+        self.assertEqual(legacy.status_code, 201, legacy.text)
+        self.assertEqual(modern.status_code, 201, modern.text)
+        modern_id = modern.json()["run_id"]
+        rejected, _ = self.finish(modern_id, milestones=list(range(1, 10)), victory=True,
+                                  ruleset_id="survival_v2")
+        self.assertEqual(rejected.status_code, 422)
+        for run, ruleset, count in ((legacy, "survival_v1", 9), (modern, "survival_v2", 11)):
+            accepted, _ = self.finish(run.json()["run_id"], milestones=list(range(1, count + 1)),
+                                      victory=True, ruleset_id=ruleset)
+            self.assertEqual(accepted.status_code, 200, accepted.text)
+            board = self.client.get("/api/v1/leaderboards", params={"ruleset_id": ruleset}).json()
+            self.assertEqual(board["rules"]["milestone_count"], count)
+            self.assertEqual([row["progress"] for row in board["entries"]], [count])
+            personal = self.client.get("/api/v1/me/leaderboard", params={"ruleset_id": ruleset}, headers=self.auth()).json()
+            self.assertEqual(personal["best"]["progress"], count)
+
+        from unittest.mock import patch
+
+        second, _ = self.start("b", ruleset_id="survival_v2")
+        self.assertEqual(second.status_code, 201, second.text)
+        accepted, _ = self.finish(second.json()["run_id"], key="b", milestones=[1000], ruleset_id="survival_v2")
+        self.assertEqual(accepted.status_code, 200, accepted.text)
+        with patch("leaderboards.PAGE_SIZE", 1):
+            first = self.client.get("/api/v1/leaderboards", params={"ruleset_id": "survival_v2"}).json()
+            self.assertEqual(first["entries"][0]["progress"], 11)
+            cursor = first["next_cursor"]
+            following = self.client.get("/api/v1/leaderboards", params={"ruleset_id": "survival_v2", "cursor": cursor})
+            self.assertEqual(following.json()["entries"][0]["progress"], 1)
+            wrong_board = self.client.get("/api/v1/leaderboards", params={"ruleset_id": "survival_v1", "cursor": cursor})
+            self.assertEqual(wrong_board.status_code, 422)
+            self.assertEqual(wrong_board.json()["error"]["code"], "invalid_cursor")
+
+    def test_both_campaigns_round_trip_cloud_checkpoints(self):
+        device = str(uuid.uuid4())
+        for campaign, stage, name, kind, wave in ((None, 2, "WIZARD HALL", "boss", 1),
+                                                   (2, 2, "RUINS", "waves", 2),
+                                                   (2, 3, "WIZARD HALL", "boss", 1)):
+            with self.subTest(campaign=campaign, stage=stage):
+                save_id = uuid.uuid4().hex
+                record = self._valid_save(save_id)
+                checkpoint = record["checkpoint"]
+                checkpoint.update(stage=stage, stage_name=name, kind=kind, wave=wave)
+                if campaign is not None:
+                    checkpoint["campaign_version"] = campaign
+                    invalid = dict(record, checkpoint=dict(checkpoint, campaign_version=1))
+                    rejected = self.client.put(f"/api/v1/saves/{save_id}", headers=self.auth(), json={
+                        "base_revision": 0, "operation_id": str(uuid.uuid4()), "device_id": device, "record": invalid})
+                    self.assertEqual(rejected.status_code, 422, rejected.text)
+                body = {"base_revision": 0, "operation_id": str(uuid.uuid4()), "device_id": device, "record": record}
+                saved = self.client.put(f"/api/v1/saves/{save_id}", headers=self.auth(), json=body)
+                self.assertEqual(saved.status_code, 200, saved.text)
+                loaded = self.client.get(f"/api/v1/saves/{save_id}", headers=self.auth())
+                self.assertEqual(loaded.status_code, 200, loaded.text)
+                self.assertEqual(json.loads(loaded.json()["record_json"])["checkpoint"], checkpoint)
 
     def test_public_board_is_anonymous_and_public_rows_are_private(self):
         self.assertEqual(self.create_result().status_code, 200)
@@ -573,7 +632,7 @@ class MigrationTests(unittest.TestCase):
                        (user_id, save_id, 1, '{"legacy":true}', "legacy-hash", '{"name":"保留云档"}', 1700000000, str(uuid.uuid4())))
         return path, user_id
 
-    def test_schema_versions_one_through_three_migrate_idempotently_to_four(self):
+    def test_schema_versions_one_through_three_migrate_idempotently_to_five(self):
         for version in (1, 2, 3):
             with self.subTest(version=version):
                 path, user_id = self._legacy_db(version)
@@ -581,7 +640,7 @@ class MigrationTests(unittest.TestCase):
                 service = AuthService(settings, sender=lambda *_: "memory", clock=MutableClock())
                 service = AuthService(settings, sender=lambda *_: "memory", clock=MutableClock())
                 with service.connection() as db:
-                    self.assertEqual(db.execute("SELECT version FROM schema_version").fetchone()[0], 4)
+                    self.assertEqual(db.execute("SELECT version FROM schema_version").fetchone()[0], 5)
                     user = db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
                     self.assertEqual(user["password_hash"], "retained-password-hash")
                     self.assertEqual(user["username"], "旧玩家" if version >= 2 else f"Player_{user_id.replace('-', '')[:8]}")
@@ -604,6 +663,33 @@ class MigrationTests(unittest.TestCase):
         with closing(sqlite3.connect(path)) as connection, connection as db:
             self.assertEqual(db.execute("SELECT version FROM schema_version").fetchone()[0], 3)
             self.assertIsNone(db.execute("SELECT 1 FROM sqlite_master WHERE name='transient_migration_probe'").fetchone())
+
+    def test_schema_four_preserves_pending_grants_and_existing_best(self):
+        from leaderboards import TABLES
+
+        path, user_id = self._legacy_db(4)
+        pending, settled, entry = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+        with closing(sqlite3.connect(path)) as connection, connection as db:
+            for statement in TABLES:
+                db.execute(re.sub(r"CASE ruleset_id .*? END", "9", statement))
+            for rid in (pending, settled):
+                db.execute("""INSERT INTO ranked_runs(run_id,user_id,operation_id,fingerprint,ruleset_id,
+                    client_version,issued_at,expires_at,start_response_json) VALUES(?,?,?,?,?,?,?,?,?)""",
+                    (rid, user_id, str(uuid.uuid4()), "original-grant", "survival_v1", "1.0", 1700000000, 1700086400, "{}"))
+            db.execute("UPDATE ranked_runs SET response_json='{}',result_fingerprint='original-result',progress=9 WHERE run_id=?", (settled,))
+            db.execute("INSERT INTO leaderboard_bests VALUES(?,?,?,?,?,?,?,?,?)",
+                       (user_id, "survival_v1", entry, 9, 10000, 10000, 100, 1, 1700000010))
+            runs_before = db.execute("SELECT * FROM ranked_runs ORDER BY run_id").fetchall()
+            bests_before = db.execute("SELECT * FROM leaderboard_bests").fetchall()
+        settings = Settings(database=path, secret=os.urandom(48).hex())
+        AuthService(settings, sender=lambda *_: "memory", clock=MutableClock())
+        AuthService(settings, sender=lambda *_: "memory", clock=MutableClock())
+        with closing(sqlite3.connect(path)) as db:
+            self.assertEqual(db.execute("SELECT version FROM schema_version").fetchone()[0], 5)
+            self.assertEqual(db.execute("SELECT * FROM ranked_runs ORDER BY run_id").fetchall(), runs_before)
+            self.assertEqual(db.execute("SELECT * FROM leaderboard_bests").fetchall(), bests_before)
+            self.assertEqual(db.execute("PRAGMA foreign_key_check").fetchall(), [])
+            self.assertEqual(db.execute("PRAGMA integrity_check").fetchone()[0], "ok")
 
 
 if __name__ == "__main__":

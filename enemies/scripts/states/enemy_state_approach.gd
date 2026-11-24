@@ -18,7 +18,10 @@ func exit() -> void:
 
 
 func process( _delta : float ) -> EnemyState:
-	var dir : Vector2 = enemy.global_position.direction_to( PlayerManager.player.global_position )
+	var target := PlayerManager.player.global_position
+	if enemy.route_to_player.is_valid():
+		target = enemy.route_to_player.call( enemy.global_position, target )
+	var dir := enemy.global_position.direction_to( target )
 	enemy.velocity = dir * speed
 	if enemy.set_direction( dir ):
 		enemy.update_animation( anim_name )

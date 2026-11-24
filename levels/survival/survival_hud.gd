@@ -281,6 +281,7 @@ func hide_result() -> void:
 func _open_leaderboard() -> void:
 	if LevelManager.practice_mode or _leaderboard == null or not result_panel.visible:
 		return
+	LeaderboardManager.select_ruleset(StageData.CURRENT_RULESET)
 	_leaderboard.open()
 	for button in [retry_button, title_button, leaderboard_button]:
 		button.disabled = true

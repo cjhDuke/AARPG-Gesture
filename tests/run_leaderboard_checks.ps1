@@ -49,7 +49,7 @@ try {
     Invoke-GameCheck 'stats' ($baseArgs + @('res://tests/run_stats_test.tscn') + $testArgs + @('--practice')) 'stats'
     Invoke-GameCheck 'seed' ($baseArgs + @('res://tests/run_stats_test.tscn') + $testArgs + @('--practice', '--run-stats-seed')) 'restart'
     Invoke-GameCheck 'restart' ($baseArgs + @('res://tests/run_stats_test.tscn') + $testArgs + @('--practice', '--run-stats-verify')) 'restart'
-    Invoke-GameCheck 'integration' ($baseArgs + @('res://tests/survival_ranking_test.tscn') + $testArgs) 'integration'
+    Invoke-GameCheck 'integration' ($baseArgs + @('res://tests/survival_ranking_test.tscn') + $testArgs + @('--legacy-campaign')) 'integration'
     Invoke-GameCheck 'ui' ($baseArgs + @('res://tests/leaderboard_ui_test.tscn') + $testArgs) 'ui'
     if ($Visual) {
         $visualArgs = @('--path', $projectRoot, '--audio-driver', 'WASAPI', '--rendering-method', 'gl_compatibility', '--resolution', '1280x720')

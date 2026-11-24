@@ -28,6 +28,7 @@ var aiming : bool = false
 var aim_dir : Vector2 = Vector2.DOWN
 
 var _marks : Node2D
+var _aim_end: Vector2
 
 
 func _ready() -> void:
@@ -45,6 +46,10 @@ func _physics_process( delta : float ) -> void:
 	if pinned and not _is_defeated:
 		global_position = pin_position
 		velocity = Vector2.ZERO
+	if aiming:
+		var from := muzzle()
+		var to := from + aim_dir * minf( global_position.distance_to( player.global_position ) + 20.0, 200.0 )
+		_aim_end = Arrow.cover_endpoint( get_world_2d().direct_space_state, from, to )
 
 
 func _process( _delta : float ) -> void:
@@ -75,6 +80,6 @@ func shoot( dir : Vector2 ) -> void:
 
 func _draw_aim() -> void:
 	var from := to_local( muzzle() )
-	var to := from + aim_dir * minf( global_position.distance_to( player.global_position ) + 20.0, 200.0 )
+	var to := to_local( _aim_end )
 	_marks.draw_line( from, to, Color( 1.0, 0.25, 0.2, 0.75 ), 1.0 )
 	_marks.draw_circle( to, 1.5, Color( 1.0, 0.45, 0.3, 0.9 ) )

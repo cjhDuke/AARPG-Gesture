@@ -4,7 +4,7 @@ extends Node
 signal stats_changed()
 signal personal_best_changed(owner_id: String, value: int)
 
-const RULESET_ID := "survival_v1"
+const RULESET_ID := StageData.LEGACY_RULESET
 const DATA_VERSION := 1
 const MAX_FILE_BYTES := 4096
 const MAX_KILLS := 2147483647
@@ -33,6 +33,8 @@ var _last_tick_usec := 0
 var _was_paused := false
 var _timing_active := false
 var _milestone_ms: Array[int] = []
+var _milestone_limit := 9
+var _ruleset := RULESET_ID
 var _kills := 0
 var _new_best := false
 var _last_result: Dictionary = {}
@@ -74,14 +76,16 @@ func update_best_kills(value: int) -> void:
 		stats_changed.emit()
 
 
-func begin_run(continued: bool = false, starting_progress: int = 0) -> void:
+func begin_run(continued: bool = false, starting_progress: int = 0, practice_milestones: int = 9, ruleset: String = RULESET_ID) -> void:
 	_finish_timing_interval()
 	_run_active = true
 	_run_identity = _current_identity()
 	_run_name = (AuthManager.username if not AuthManager.username.is_empty() else "Player") if _run_identity != "guest" else "GUEST"
 	_run_practice = LevelManager.practice_mode
 	_continued = continued
-	_progress = clampi(starting_progress, 0, 9)
+	_ruleset = ruleset
+	_milestone_limit = practice_milestones if _run_practice else StageData.milestones_for_ruleset(ruleset)
+	_progress = clampi(starting_progress, 0, _milestone_limit)
 	_elapsed_usec = 0
 	_milestone_ms.clear()
 	_kills = 0
@@ -97,18 +101,18 @@ func begin_run(continued: bool = false, starting_progress: int = 0) -> void:
 
 func set_timing_active(active: bool) -> void:
 	_finish_timing_interval()
-	_timing_active = active and _run_active and _progress < 9
+	_timing_active = active and _run_active and _progress < _milestone_limit
 	_last_tick_usec = Time.get_ticks_usec()
 	_was_paused = get_tree().paused
 
 
 func record_milestone(index: int) -> void:
-	if not _run_active or index != _progress + 1 or index < 1 or index > 9:
+	if not _run_active or index != _progress + 1 or index < 1 or index > _milestone_limit:
 		return
 	_finish_timing_interval()
 	_progress = index
 	_milestone_ms.append(_elapsed_ms())
-	if index == 9:
+	if index == _milestone_limit:
 		_timing_active = false
 	_last_tick_usec = Time.get_ticks_usec()
 	stats_changed.emit()
@@ -218,7 +222,7 @@ func _make_snapshot(victory: bool) -> Dictionary:
 		"victory": victory,
 		"ranking_status": "NOT RANKED",
 		"ranking_reason": reason,
-		"ruleset_id": RULESET_ID,
+		"ruleset_id": _ruleset,
 		"player_name": _run_name,
 		"owner_id": _run_identity,
 	}

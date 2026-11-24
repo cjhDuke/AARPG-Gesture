@@ -36,9 +36,13 @@ func _ready() -> void:
 ## 高台在世界坐标里的矩形（敌人生成要避开；已含被地图遮住的上半部分）
 func get_ledge_rects() -> Array[Rect2]:
 	var result : Array[Rect2] = []
-	for r in LEDGE_TILES:
+	for r in _ledge_regions():
 		result.append( Rect2( r.position * 32, r.size * 32 ) )
 	return result
+
+
+func _ledge_regions() -> Array[Rect2i]:
+	return LEDGE_TILES
 
 
 func _paint() -> void:
@@ -46,10 +50,9 @@ func _paint() -> void:
 	for y in ROWS:
 		for x in COLS:
 			set_cell( 0, Vector2i( x, y ), 0, _grass_tile( x, y ) )
-	for r in ROAD_TILES:
-		_paint_road( r )
+	_paint_roads()
 	_paint_border()
-	for r in LEDGE_TILES:
+	for r in _ledge_regions():
 		_paint_ledge( r )
 
 
@@ -60,6 +63,11 @@ func _grass_tile( x : int, y : int ) -> Vector2i:
 	if h < 18:
 		return Vector2i( 2, 1 )
 	return PLAIN_GRASS[ h % PLAIN_GRASS.size() ]
+
+
+func _paint_roads() -> void:
+	for region in ROAD_TILES:
+		_paint_road( region )
 
 
 func _paint_road( r : Rect2i ) -> void:
@@ -118,7 +126,8 @@ func _build_colliders() -> void:
 	ledge.collision_mask = 0
 	add_child( ledge )
 	for r in get_ledge_rects():
-		_add_rect( ledge, Rect2( r.position.x, -64.0, r.size.x, r.end.y + 64.0 - LEDGE_BOTTOM_TRIM ) )
+		var top := -64.0 if is_zero_approx( r.position.y ) else r.position.y
+		_add_rect( ledge, Rect2( r.position.x, top, r.size.x, r.end.y - top - LEDGE_BOTTOM_TRIM ) )
 
 
 func _add_rect( body : StaticBody2D, rect : Rect2 ) -> void:

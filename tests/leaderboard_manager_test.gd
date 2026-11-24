@@ -36,6 +36,33 @@ func _run() -> void:
 	expect(manager._write(manager._profile_path(owner), {"version": 1, "pending": [{"run_id": id, "expires_at": 1900000000, "body": original}], "best": {}}), "Save pending queue")
 	var loaded: Dictionary = manager._profile(owner)
 	expect(loaded["pending"].size() == 1 and loaded["pending"][0]["body"]["kills"] is int, "Actual disk queue reload normalizes numbers")
+	expect(loaded["pending"][0]["body"]["ruleset_id"] == StageData.LEGACY_RULESET, "Legacy pending upload retains its original ruleset")
+	var v1_entry := {"entry_id": id, "rank": 1, "player_name": "Legacy", "progress": 2, "rank_time_ms": 100, "elapsed_ms": 125, "kills": 37, "victory": false, "achieved_at": 1800000000}
+	var v2_entry := {"entry_id": id, "rank": 1, "player_name": "Modern", "progress": 3, "rank_time_ms": 100, "elapsed_ms": 125, "kills": 37, "victory": false, "achieved_at": 1800000001}
+	manager.select_ruleset(StageData.LEGACY_RULESET)
+	manager._identity = owner
+	var legacy_board_path := manager._board_cache_path()
+	var legacy_personal_path := manager._personal_cache_path(owner)
+	expect(manager._write(legacy_board_path, {"version": 1, "ruleset_id": StageData.LEGACY_RULESET, "entries": [v1_entry], "updated_at": 1800000000}), "Write isolated legacy board cache")
+	var legacy_profile: Dictionary = manager._profile(owner)
+	legacy_profile["best"] = v1_entry
+	expect(manager._save_profile(owner), "Write isolated legacy personal cache")
+	manager.select_ruleset(StageData.CURRENT_RULESET)
+	var current_board_path := manager._board_cache_path()
+	var current_personal_path := manager._personal_cache_path(owner)
+	expect(current_board_path != legacy_board_path and current_personal_path != legacy_personal_path, "Rulesets use separate public and personal cache files")
+	expect(manager._write(current_board_path, {"version": 1, "ruleset_id": StageData.CURRENT_RULESET, "entries": [v2_entry], "updated_at": 1800000001}), "Write isolated current board cache")
+	expect(manager._write(current_personal_path, v2_entry), "Write isolated current personal cache")
+	manager._identity = owner
+	manager._load_board_cache()
+	manager._load_personal_cache()
+	expect(manager.get_board_state()["entries"].size() == 1 and manager.get_board_state()["entries"][0]["player_name"] == "Modern", "Current board cache never displays legacy rows")
+	expect(manager.get_personal_state()["best"].get("player_name") == "Modern", "Current personal cache never displays legacy best")
+	manager.select_ruleset(StageData.LEGACY_RULESET)
+	expect(manager.get_board_state()["entries"].size() == 1 and manager.get_board_state()["entries"][0]["player_name"] == "Legacy", "Legacy manager query can still load legacy cache")
+	expect(manager.get_personal_state()["best"].get("player_name") == "Legacy", "Legacy manager query can still load legacy personal best")
+	manager.select_ruleset(StageData.CURRENT_RULESET)
+	manager._identity = ""
 	manager._board["updated_at"] = 1800000000
 	manager._board["entries"] = []
 	manager.fetch_board()

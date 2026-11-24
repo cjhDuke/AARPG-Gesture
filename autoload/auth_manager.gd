@@ -333,7 +333,7 @@ func _is_service_route(path: String, method: int, authorized: bool) -> bool:
 		if route == "/leaderboards":
 			if not RegEx.create_from_string("^/leaderboards\\?(ruleset_id=[A-Za-z0-9_]+(&cursor=[A-Za-z0-9_.~-]+)?|cursor=[A-Za-z0-9_.~-]+(&ruleset_id=[A-Za-z0-9_]+)?)$").search(path):
 				return false
-		elif route == "/me/leaderboard" and authorized and path == "/me/leaderboard?ruleset_id=survival_v1":
+		elif route == "/me/leaderboard" and authorized and path in ["/me/leaderboard?ruleset_id=survival_v1", "/me/leaderboard?ruleset_id=survival_v2"]:
 			pass
 		else:
 			return false

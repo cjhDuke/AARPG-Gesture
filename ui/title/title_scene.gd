@@ -224,6 +224,7 @@ func open_leaderboard() -> void:
 		if is_instance_valid(button):
 			button.disabled = true
 	title_ui.process_mode = Node.PROCESS_MODE_DISABLED
+	LeaderboardManager.select_ruleset(StageData.CURRENT_RULESET)
 	_leaderboard = LeaderboardPanel.new()
 	_leaderboard.name = "LeaderboardPanel"
 	add_child(_leaderboard)

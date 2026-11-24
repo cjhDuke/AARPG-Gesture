@@ -177,7 +177,8 @@ class CloudSaves:
                 summary_json = encoded(summary)
             else:
                 summary = json.loads(current["summary_json"])
-                summary["checkpoint"] = {key: summary["checkpoint"][key] for key in ("stage", "stage_name", "kind", "wave")}
+                checkpoint = summary["checkpoint"]
+                summary["checkpoint"] = {key: checkpoint[key] for key in ("stage", "stage_name", "kind", "wave", "campaign_version") if key in checkpoint}
                 summary_json = encoded(summary)
             revision = body.base_revision + 1
             db.execute("""INSERT INTO cloud_saves(user_id,save_id,revision,record_json,content_hash,summary_json,updated_at,device_id,deleted_at)

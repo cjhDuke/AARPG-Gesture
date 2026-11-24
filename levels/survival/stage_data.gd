@@ -14,6 +14,11 @@ class_name StageData extends RefCounted
 ##            站位都被占着就按普通方式生成。站位要和图块地图里的高台对上（草地：GrasslandMap.LEDGE_TILES，
 ##            站位在高台中间一列、离上边界 40 像素处，在 HandController.CURSOR_RECT 之内镖才够得着）
 
+const LEGACY_VERSION := 1
+const CURRENT_VERSION := 2
+const LEGACY_RULESET := "survival_v1"
+const CURRENT_RULESET := "survival_v2"
+
 const STAGES : Array[Dictionary] = [
 	{
 		"name": "DUNGEON",
@@ -61,9 +66,38 @@ static func enabled_indices() -> Array[int]:
 
 
 ## 第 n 个启用的关卡（n 从 0 开始），返回它的数据
-static func get_stage( n : int ) -> Dictionary:
+static func get_stage( n : int, version: int = LEGACY_VERSION ) -> Dictionary:
+	if version == CURRENT_VERSION:
+		return CampaignPreviewData.STAGES[n]
 	return STAGES[ enabled_indices()[n] ]
 
 
-static func stage_count() -> int:
-	return enabled_indices().size()
+static func stage_count(version: int = LEGACY_VERSION) -> int:
+	return CampaignPreviewData.STAGES.size() if version == CURRENT_VERSION else enabled_indices().size()
+
+
+static func checkpoint_version(checkpoint: Dictionary) -> int:
+	var version: Variant = checkpoint.get("campaign_version", LEGACY_VERSION)
+	if (version is int or version is float) and (float(version) == LEGACY_VERSION or float(version) == CURRENT_VERSION):
+		return int(version)
+	return 0
+
+
+static func ruleset(version: int) -> String:
+	return CURRENT_RULESET if version == CURRENT_VERSION else LEGACY_RULESET
+
+
+static func milestones_for_ruleset(id: Variant) -> int:
+	match id:
+		LEGACY_RULESET:
+			return milestones_before(stage_count(LEGACY_VERSION), LEGACY_VERSION) + 3
+		CURRENT_RULESET:
+			return milestones_before(stage_count(CURRENT_VERSION), CURRENT_VERSION) + 3
+	return 0
+
+
+static func milestones_before(index: int, version: int) -> int:
+	var completed := 0
+	for i in index:
+		completed += get_stage(i, version)["waves"].size()
+	return completed

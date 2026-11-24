@@ -43,6 +43,10 @@ var _run_id : int = 0
 ## _advance_stage 协程正在跑（淡出 / 换关 / 淡入）；重开和练习场跳关会递增 _run_id 作废它，并把本标记清掉
 var _stage_changing : bool = false
 var _checkpoint: Dictionary = {}
+var _practice_layout: Node2D
+var practice_encounter_name := ""
+var campaign_version := StageData.LEGACY_VERSION
+var campaign_preview := LevelManager.practice_mode and OS.get_cmdline_user_args().has( "--campaign-preview" )
 ## 只在玩家可操作的正式流程累计时间；开场与强制切关横幅不计。
 var _run_clock_started := false
 var _stage_clock_held := false
@@ -103,8 +107,11 @@ func _free_level() -> void:
 ## 开始（或重新开始）一局
 func _start_run() -> void:
 	PlayerHud.show()
-	RunStats.begin_run()
-	LeaderboardManager.begin_run()
+	var legacy_check := OS.is_debug_build() and OS.get_cmdline_user_args().has("--legacy-campaign")
+	campaign_version = StageData.CURRENT_VERSION if campaign_preview or (not LevelManager.practice_mode and not legacy_check) else StageData.LEGACY_VERSION
+	var ruleset := StageData.ruleset(campaign_version)
+	RunStats.begin_run( false, 0, _milestones_before( stage_count() - 1 ) + 3, ruleset )
+	LeaderboardManager.begin_run(false, ruleset)
 	_run_clock_started = false
 	_stage_clock_held = false
 	_checkpoint = {}
@@ -163,7 +170,12 @@ func _begin_wave() -> void:
 	_wave_hurt = false
 	_capture_checkpoint()
 	hud.show_banner( "WAVE %d" % wave )
-	spawner.start_wave( _stage_data["waves"][wave - 1] )
+	var wave_data: Dictionary = _stage_data["waves"][wave - 1]
+	if wave_data.has("batches"):
+		var route := Callable( _map, "route_target" ) if _map.has_method( "route_target" ) else Callable()
+		spawner.start_scheduled_wave( wave_data["batches"], CampaignPreviewData.ZONES, route, _stage_data.get( "archer_anchors", {} ) )
+	else:
+		spawner.start_wave( wave_data )
 	_update_status()
 	_autosave_wave.call_deferred(_run_id)
 	_sync_run_clock()
@@ -171,8 +183,12 @@ func _begin_wave() -> void:
 
 ## 切到第 n 关（只换数据、图块地图和音乐，不碰主角和背包）
 func _load_stage( n : int ) -> void:
+	if is_instance_valid( _practice_layout ):
+		_practice_layout.free()
+		_practice_layout = null
+	practice_encounter_name = ""
 	stage = n
-	_stage_data = StageData.get_stage( n )
+	_stage_data = StageData.get_stage( n, campaign_version )
 	var path : String = _stage_data["tilemap"]
 	if path != _map_path or not is_instance_valid( _map ):
 		# 释放旧地图节点，实例化新场景放在同一位置（最底层）
@@ -184,7 +200,10 @@ func _load_stage( n : int ) -> void:
 		move_child( _map, 0 )
 	# 高台和弓手站位跟着当前关的图块地图走（地牢没有高台）
 	spawner.blocked_rects = _map.get_ledge_rects() if _map.has_method( "get_ledge_rects" ) else ( [] as Array[Rect2] )
+	spawner.sort_enemies_with_player = _map.has_method( "attach_wall_depth" ) and _map.attach_wall_depth( self, _player.z_index )
 	spawner.archer_spots.assign( _stage_data.get( "archer_spots", [] ) )
+	if _stage_data.has( "archer_anchors" ):
+		spawner.archer_spots.assign( _stage_data["archer_anchors"].values() )
 	AudioManager.play_music( load( _stage_data["music"] ) )
 
 
@@ -233,20 +252,26 @@ func get_checkpoint() -> Dictionary:
 
 
 func _capture_checkpoint() -> void:
+	if LevelManager.practice_mode:
+		return
 	_checkpoint = {
 		"stage": stage, "stage_name": _stage_data["name"],
 		"kind": _stage_data.get("type", "waves"), "wave": 1 if _is_boss_stage() else wave,
 		"hp": _player.hp, "psi": controller.psi, "upgrades": controller.owned_levels(),
 		"kills": kills, "loot": loot.get_checkpoint_state(),
 	}
+	if campaign_version != StageData.LEGACY_VERSION:
+		_checkpoint["campaign_version"] = campaign_version
 
 
 func _restore_checkpoint(data: Dictionary) -> void:
-	var completed := int(data["stage"]) * 3
+	campaign_version = StageData.checkpoint_version(data)
+	var completed := _milestones_before(int(data["stage"]))
 	if data.get("kind", "waves") != "boss":
 		completed += int(data["wave"]) - 1
-	RunStats.begin_run(true, completed)
-	LeaderboardManager.begin_run(true)
+	var ruleset := StageData.ruleset(campaign_version)
+	RunStats.begin_run(true, completed, StageData.milestones_for_ruleset(ruleset), ruleset)
+	LeaderboardManager.begin_run(true, ruleset)
 	_run_clock_started = false
 	_stage_clock_held = false
 	_run_id += 1
@@ -282,7 +307,7 @@ func _on_boss_defeated() -> void:
 func _on_boss_segment_cleared(segment: int) -> void:
 	if _ended:
 		return
-	RunStats.record_milestone(6 + segment)
+	RunStats.record_milestone( _milestones_before( stage ) + segment )
 	if segment == WizardBoss.ROUNDS:
 		RunStats.set_timing_active(false)
 
@@ -306,7 +331,19 @@ func _wave_total() -> int:
 
 
 func _is_last_stage() -> bool:
-	return stage >= StageData.stage_count() - 1
+	return stage >= stage_count() - 1
+
+
+func stage_count() -> int:
+	return StageData.stage_count(campaign_version)
+
+
+func stage_name() -> String:
+	return _stage_data.get( "name", "" )
+
+
+func _milestones_before( index: int ) -> int:
+	return StageData.milestones_before(index, campaign_version)
 
 
 func _on_enemy_killed() -> void:
@@ -324,7 +361,10 @@ func _report_stats_error() -> void:
 func _on_wave_cleared() -> void:
 	if _ended:
 		return
-	RunStats.record_milestone(stage * 3 + wave)
+	if not practice_encounter_name.is_empty():
+		_spawn_chest()
+		return
+	RunStats.record_milestone( _milestones_before( stage ) + wave )
 	if wave >= _wave_total() and _is_last_stage():
 		_end_run( true )
 	else:
@@ -349,6 +389,9 @@ func _spawn_chest() -> void:
 func _on_chest_finished() -> void:
 	_chest = null
 	if _ended:
+		return
+	if not practice_encounter_name.is_empty():
+		hud.show_banner( "ENCOUNTER COMPLETE" )
 		return
 	if wave >= _wave_total():
 		_advance_stage()
@@ -467,7 +510,7 @@ func debug_goto_stage( n : int ) -> void:
 		return
 	# 调试入口永远不能保留正常局的统计资格。
 	RunStats.abandon_run()
-	RunStats.begin_run(true, n * 3)
+	RunStats.begin_run( true, _milestones_before( n ), _milestones_before( stage_count() - 1 ) + 3, StageData.ruleset(campaign_version) )
 	LeaderboardManager.begin_run(true)
 	_run_id += 1
 	if _stage_changing:
@@ -492,12 +535,34 @@ func debug_goto_stage( n : int ) -> void:
 	wave_timer.start( STAGE_BANNER_TIME )
 
 
+## 练习场单波对照。每次重置到相同的角色资源和出生位置。
+func debug_start_encounter( layout: Node2D, label: String, batches: Array, zones: Dictionary ) -> void:
+	if not LevelManager.practice_mode or campaign_preview:
+		layout.free()
+		return
+	hud.hide_result()
+	PauseMenu.process_mode = Node.PROCESS_MODE_ALWAYS
+	_start_run()
+	wave_timer.stop()
+	_practice_layout = layout
+	practice_encounter_name = label
+	add_child( layout )
+	move_child( layout, _map.get_index() + 1 )
+	spawner.blocked_rects.assign( layout.get_ledge_rects() )
+	spawner.sort_enemies_with_player = layout.attach_wall_depth( self, _player.z_index )
+	wave = 2
+	_wave_hurt = false
+	hud.show_banner( label )
+	spawner.start_scheduled_wave( batches, zones, Callable( layout, "route_target" ) )
+	_update_status()
+
+
 ## 练习场调试：立刻清掉这一波的所有敌人，走正常的清波流程（宝箱 / 切关 / 胜利）
 func debug_clear_wave() -> void:
 	if _ended:
 		return
 	RunStats.abandon_run()
-	RunStats.begin_run(true, stage * 3 + maxi(wave - 1, 0))
+	RunStats.begin_run( true, _milestones_before( stage ) + maxi( wave - 1, 0 ), _milestones_before( stage_count() - 1 ) + 3, StageData.ruleset(campaign_version) )
 	LeaderboardManager.begin_run(true)
 	if is_instance_valid( _boss ):
 		# Boss 关：K = 立即碎盾进入破绽阶段
@@ -565,6 +630,8 @@ func _on_player_died() -> void:
 	if is_instance_valid( _boss ):
 		_boss.freeze()
 	spawner.set_process( false )
+	if campaign_version == StageData.CURRENT_VERSION or not practice_encounter_name.is_empty():
+		spawner.clear()
 	controller.enabled = false
 	PauseMenu.process_mode = Node.PROCESS_MODE_DISABLED
 	_death_fx = DeathFx.new()
@@ -612,4 +679,7 @@ func _on_title_pressed() -> void:
 
 
 func _update_status() -> void:
+	if not practice_encounter_name.is_empty():
+		hud.status_label.text = "%s  KILLS %d" % [ practice_encounter_name, kills ]
+		return
 	hud.set_status( stage + 1, maxi( wave, 1 ), _wave_total(), kills, RunStats.best_kills )

@@ -32,7 +32,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from cloud_saves import CloudError, CloudSaves, Mutation, PutSave
 from request_limits import RequestLimits
 from leaderboards import LeaderboardError, Leaderboards, RunResult, StartRun, StatsUpdate
-from leaderboards import TABLES as LEADERBOARD_TABLES
+from leaderboards import TABLES as LEADERBOARD_TABLES, migrate_v4_tables
 
 LOG = logging.getLogger("psi_hand.auth")
 ACCESS_SECONDS = 900
@@ -180,7 +180,7 @@ class AuthService:
             db.execute("PRAGMA journal_mode=WAL")
             db.executescript(SCHEMA)
             version = db.execute("SELECT version FROM schema_version").fetchone()[0]
-            if version not in (1, 2, 3, 4):
+            if version not in (1, 2, 3, 4, 5):
                 raise RuntimeError("Unsupported database schema")
         if version == 1:
             with self.transaction() as db:
@@ -188,12 +188,16 @@ class AuthService:
                 db.execute("UPDATE users SET username='Player_' || substr(replace(id,'-',''),1,8)")
                 db.execute("UPDATE schema_version SET version=2")
         self.cloud = CloudSaves(self)
-        # Each migration step commits independently; stage 4 itself is atomic.
+        # The leaderboard migration is atomic and keeps prior grants and responses.
         with self.transaction() as db:
-            if db.execute("SELECT version FROM schema_version").fetchone()[0] == 3:
+            current = db.execute("SELECT version FROM schema_version").fetchone()[0]
+            if current == 3:
                 for statement in LEADERBOARD_TABLES:
                     db.execute(statement)
-                db.execute("UPDATE schema_version SET version=4")
+            elif current == 4:
+                migrate_v4_tables(db)
+            if current < 5:
+                db.execute("UPDATE schema_version SET version=5")
         # This additive migration keeps the existing schema version contract.
         with self.transaction() as db:
             columns = {column["name"] for column in db.execute("PRAGMA table_info(users)")}

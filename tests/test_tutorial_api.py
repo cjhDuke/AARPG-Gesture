@@ -109,7 +109,7 @@ class TutorialApiTests(unittest.TestCase):
                 service = self.app.state.auth
                 with service.transaction() as db:
                     session = service.new_session(db, {"id": "legacy"})
-                    self.assertEqual(db.execute("SELECT version FROM schema_version").fetchone()[0], 4)
+                    self.assertEqual(db.execute("SELECT version FROM schema_version").fetchone()[0], 5)
                 self.assertEqual(session["user"]["tutorial_state"], "exempt")
                 client = self.start()
                 headers = self.auth(session)

@@ -9,6 +9,7 @@ class_name EnemyProjectile extends HitBox
 const PLAYER_HURT_LAYER : int = 2
 const ENEMY_HURT_LAYER : int = 256
 const WALL_LAYER : int = 16
+const ARROW_COVER_LAYER: int = 64
 ## 飞出 ARENA_RECT 这么远就消失（像素）
 const OUT_MARGIN : float = 24.0
 const BREAK_SOUND : AudioStream = preload( "res://enemies/shield_goblin/clang.wav" )
@@ -22,6 +23,7 @@ static var parry_by_spin : bool = false
 @export var hit_radius : float = 4.0
 
 var direction : Vector2 = Vector2.RIGHT
+var terrain_mask := WALL_LAYER
 var _age : float = 0.0
 var _gone : bool = false
 var _hurt : HurtBox
@@ -82,7 +84,8 @@ func _physics_process( delta : float ) -> void:
 
 
 func _hits_wall( from : Vector2, to : Vector2 ) -> bool:
-	var q := PhysicsRayQueryParameters2D.create( from, to, WALL_LAYER )
+	var q := PhysicsRayQueryParameters2D.create( from, to, terrain_mask )
+	q.hit_from_inside = ( terrain_mask & ARROW_COVER_LAYER ) != 0
 	return not get_world_2d().direct_space_state.intersect_ray( q ).is_empty()
 
 

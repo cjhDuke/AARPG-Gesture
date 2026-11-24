@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 RULESET = "survival_v1"
+MILESTONES = {RULESET: 9, "survival_v2": 11}
 VERSION = re.compile(r"^[A-Za-z0-9._+-]{1,32}$", re.ASCII)
 UUID_TEXT = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 PAGE_SIZE = 20
@@ -40,7 +41,7 @@ class StartRun(_Body):
     @field_validator("ruleset_id")
     @classmethod
     def ruleset(cls, value):
-        if value != RULESET:
+        if value not in MILESTONES:
             raise ValueError("Unsupported ruleset")
         return value
 
@@ -67,7 +68,7 @@ class RunResult(_Body):
     victory: bool
     kills: int = Field(ge=0, le=2147483647, strict=True)
     elapsed_ms: int = Field(ge=0, le=86400000, strict=True)
-    milestone_ms: list[int] = Field(max_length=9)
+    milestone_ms: list[int] = Field(max_length=max(MILESTONES.values()))
     continued: bool = False
     practice: bool = False
     debug_used: bool = False
@@ -75,7 +76,7 @@ class RunResult(_Body):
     @field_validator("ruleset_id")
     @classmethod
     def ruleset(cls, value):
-        if value != RULESET:
+        if value not in MILESTONES:
             raise ValueError("Unsupported ruleset")
         return value
 
@@ -110,10 +111,11 @@ class RunResult(_Body):
             raise ValueError("Milestones must be nondecreasing")
         if any(item > self.elapsed_ms for item in self.milestone_ms):
             raise ValueError("Milestone exceeds elapsed time")
+        limit = MILESTONES[self.ruleset_id]
         if self.victory:
-            if len(self.milestone_ms) != 9 or self.elapsed_ms != self.milestone_ms[-1]:
-                raise ValueError("Victory requires all nine milestones")
-        elif len(self.milestone_ms) > 8:
+            if len(self.milestone_ms) != limit or self.elapsed_ms != self.milestone_ms[-1]:
+                raise ValueError("Victory requires every milestone for this ruleset")
+        elif len(self.milestone_ms) >= limit:
             raise ValueError("A failed run cannot complete all milestones")
         return self
 
@@ -131,7 +133,7 @@ TABLES = (
     operation_id TEXT NOT NULL, fingerprint TEXT NOT NULL, ruleset_id TEXT NOT NULL,
     client_version TEXT NOT NULL, issued_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
     start_response_json TEXT NOT NULL, result_fingerprint TEXT, response_json TEXT,
-    progress INTEGER CHECK(progress BETWEEN 0 AND 9), rank_time_ms INTEGER,
+    progress INTEGER CHECK(progress BETWEEN 0 AND CASE ruleset_id WHEN 'survival_v1' THEN 9 WHEN 'survival_v2' THEN 11 ELSE -1 END), rank_time_ms INTEGER,
     elapsed_ms INTEGER, kills INTEGER, victory INTEGER CHECK(victory IN (0,1)),
     achieved_at INTEGER, UNIQUE(user_id,operation_id),
     CHECK((result_fingerprint IS NULL AND response_json IS NULL) OR
@@ -139,7 +141,7 @@ TABLES = (
     """CREATE TABLE IF NOT EXISTS leaderboard_bests (
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     ruleset_id TEXT NOT NULL, entry_id TEXT NOT NULL UNIQUE,
-    progress INTEGER NOT NULL CHECK(progress BETWEEN 1 AND 9),
+    progress INTEGER NOT NULL CHECK(progress BETWEEN 1 AND CASE ruleset_id WHEN 'survival_v1' THEN 9 WHEN 'survival_v2' THEN 11 ELSE -1 END),
     rank_time_ms INTEGER NOT NULL CHECK(rank_time_ms BETWEEN 1 AND 86400000),
     elapsed_ms INTEGER NOT NULL CHECK(elapsed_ms BETWEEN 0 AND 86400000),
     kills INTEGER NOT NULL CHECK(kills BETWEEN 0 AND 2147483647),
@@ -147,6 +149,16 @@ TABLES = (
     PRIMARY KEY(user_id,ruleset_id))""",
     "CREATE INDEX IF NOT EXISTS leaderboard_order ON leaderboard_bests(ruleset_id,progress DESC,rank_time_ms ASC,achieved_at ASC,entry_id ASC)",
 )
+
+
+def migrate_v4_tables(db):
+    """Expand progress bounds without changing existing grants or stored responses."""
+    for table, create in zip(("ranked_runs", "leaderboard_bests"), TABLES[1:3]):
+        db.execute(f"ALTER TABLE {table} RENAME TO {table}_v4")
+        db.execute(create)
+        db.execute(f"INSERT INTO {table} SELECT * FROM {table}_v4")
+        db.execute(f"DROP TABLE {table}_v4")
+    db.execute(TABLES[3])
 
 
 def encoded(value):
@@ -170,7 +182,7 @@ class Leaderboards:
 
     @staticmethod
     def _ruleset(value):
-        if value != RULESET:
+        if value not in MILESTONES:
             raise LeaderboardError(422, "invalid_ruleset", "Choose a supported ruleset.")
 
     def _charge(self, request, writing=False, starting=False, public=False, authenticated=False):
@@ -300,7 +312,7 @@ class Leaderboards:
                 raise ValueError
             rule, progress, rank_time, achieved, entry_id = data
             self._uuid(entry_id, "invalid_cursor")
-            if rule != ruleset or any(type(x) is not int for x in (progress, rank_time, achieved)) or not 1 <= progress <= 9 or not 1 <= rank_time <= 86400000:
+            if rule != ruleset or any(type(x) is not int for x in (progress, rank_time, achieved)) or not 1 <= progress <= MILESTONES[ruleset] or not 1 <= rank_time <= 86400000:
                 raise ValueError
             return progress, rank_time, achieved, entry_id
         except (ValueError, TypeError, json.JSONDecodeError, UnicodeDecodeError):
@@ -321,7 +333,7 @@ class Leaderboards:
             rows = db.execute("WITH ranked AS (SELECT " + self._public_columns() + ",RANK() OVER(ORDER BY b.progress DESC,b.rank_time_ms ASC) AS rank FROM leaderboard_bests b JOIN users u ON u.id=b.user_id WHERE b.ruleset_id=? AND b.progress>0) SELECT * FROM ranked WHERE " + where + " ORDER BY progress DESC,rank_time_ms ASC,achieved_at ASC,entry_id ASC LIMIT ?", (*params, PAGE_SIZE + 1)).fetchall()
             entries = [self._entry(row, row["rank"]) for row in rows[:PAGE_SIZE]]
             next_cursor = self._encode_cursor(ruleset_id, rows[PAGE_SIZE - 1]) if len(rows) > PAGE_SIZE else None
-            return {"ruleset_id": ruleset_id, "rules": {"milestone_count": 9, "input_policy": "gesture_keyboard_mixed", "accepting_runs": True},
+            return {"ruleset_id": ruleset_id, "rules": {"milestone_count": MILESTONES[ruleset_id], "input_policy": "gesture_keyboard_mixed", "accepting_runs": True},
                     "entries": entries, "next_cursor": next_cursor, "generated_at": now}
 
     def personal(self, request, ruleset_id=RULESET):

@@ -4,11 +4,11 @@
 
 注册可携带 `username`（2～24 字，支持 Unicode 字母、数字、空格、下划线和连字符，允许重名）；`PATCH /api/v1/me` 使用 Bearer 会话修改当前账号显示名，登录仍用邮箱。schema 1 自动迁移到 2，保留原密码哈希和会话，旧账号/旧客户端会获得默认显示名。密码原样处理、区分大小写，支持数字与大小写字母；注册和密码重置长度为 8～128 字符，登录继续接受 1～128 字符以兼容旧账号。
 
-排行榜于 2026-11-17 上线：个人 BEST、24 小时排名凭证、成绩幂等提交、公开分页榜和个人排名接口已接通 Windows 1.1.0。协议见 [leaderboard-server.md](../docs/ai/leaderboard-server.md)，客户端和验收见 [leaderboard-online.md](../docs/ai/leaderboard-online.md)。数据库 schema 4，账号与云档旧数据保留。部署须同时包含 `leaderboards.py` 及云档相关模块，先做一致性数据库备份和恢复验证；仅替换旧 app.py 不能回滚 schema。
+排行榜于 2026-11-17 上线：个人 BEST、24 小时排名凭证、成绩幂等提交、公开分页榜和个人排名接口已接通 Windows 1.1.0。协议见 [leaderboard-server.md](../docs/ai/leaderboard-server.md)，客户端和验收见 [leaderboard-online.md](../docs/ai/leaderboard-online.md)。生产于 2026-11-24 升至 schema 5，新赛制 11 个里程碑与新版云档已上线，既有账号、云档及旧榜数据保留。部署须同时包含 `leaderboards.py` 及云档相关模块，先做一致性数据库备份和恢复验证；仅替换旧 app.py 不能回滚 schema。
 
 注册可携带 `username`（2～24 字，支持 Unicode 字母、数字、空格、下划线和连字符，允许重名）；`PATCH /api/v1/me` 使用 Bearer 会话修改当前账号显示名，登录仍用邮箱。schema 1 自动迁移到 2，保留原密码哈希和会话，旧账号/旧客户端会获得默认显示名。密码原样处理、区分大小写，支持数字与大小写字母；注册和密码重置长度为 8～128 字符，登录继续接受 1～128 字符以兼容旧账号。
 
-云档初始化将 schema 1/2 升到 3，排行榜初始化再升到 4；重复初始化不会降级。发布须包含 `cloud_saves.py / save_payload.py / request_limits.py / leaderboards.py`；部署与回滚使用一致性数据库备份。云档接口使用 revision 条件写入和 operation_id 幂等；账号与排行榜请求限 8 KiB，云档 PUT 封装限 80 KiB、规范载荷限 64 KiB。生产 Nginx 已加载 80 KiB 限制。
+云档初始化将 schema 1/2 升到 3。当前服务将 schema 3/4 升到 5，增加新版战役云档和 survival_v2 排行；重复初始化不会降级。发布须包含 `cloud_saves.py / save_payload.py / request_limits.py / leaderboards.py`；部署与回滚使用一致性数据库备份。云档接口使用 revision 条件写入和 operation_id 幂等；账号与排行榜请求限 8 KiB，云档 PUT 封装限 80 KiB、规范载荷限 64 KiB。生产 Nginx 已加载 80 KiB 限制。
 
 请求字段校验错误（HTTP 422）返回不包含提交字段值的固定错误码：`invalid_password_length`（密码长度不符，固定提示 8-128 字符）、`invalid_email`（邮箱格式无效）、`invalid_code_input`（验证码或挑战 ID 格式无效）、`invalid_username`（显示名不符合规则）；其他字段错误使用 `invalid_input`。验证码内容错误或过期仍返回 `invalid_code`。
 

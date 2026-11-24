@@ -19,9 +19,10 @@ _UPGRADES = {
     "blast": 3, "pierce": 3, "magnet": 3, "frost": 3,
     "pool": 3, "wide_spin": 3, "parry": 3, "heart": 3,
 }
-_STAGES = (("DUNGEON", "waves", 3), ("GRASSLAND", "waves", 3), ("WIZARD HALL", "boss", 1))
+_LEGACY_STAGES = (("DUNGEON", "waves", 3), ("GRASSLAND", "waves", 3), ("WIZARD HALL", "boss", 1))
+_STAGES = {1: _LEGACY_STAGES, 2: (*_LEGACY_STAGES[:2], ("RUINS", "waves", 2), _LEGACY_STAGES[-1])}
 _RECORD_KEYS = {"version", "id", "name", "created_at", "saved_at", "saved_unix", "checkpoint", "save_kind"}
-_CHECKPOINT_KEYS = {"stage", "stage_name", "kind", "wave", "hp", "psi", "upgrades", "kills", "loot"}
+_CHECKPOINT_KEYS = {"stage", "stage_name", "kind", "wave", "hp", "psi", "upgrades", "kills", "loot", "campaign_version"}
 _LOOT_KEYS = {"bag_apples", "picked", "kills_since_apple", "eat_timer", "bag_potions"}
 
 
@@ -73,9 +74,11 @@ def _timestamp(value: Any, label: str) -> str:
 
 
 def _validate_checkpoint(value: Any) -> dict:
-    data = _object(value, _CHECKPOINT_KEYS, "checkpoint")
-    stage = _integer(data.get("stage"), "checkpoint.stage", 0, len(_STAGES) - 1)
-    stage_name, kind, wave_max = _STAGES[stage]
+    data = _object(value, _CHECKPOINT_KEYS, "checkpoint", optional={"campaign_version"})
+    campaign = _integer(data.get("campaign_version", 1), "checkpoint.campaign_version", 1, 2)
+    stages = _STAGES[campaign]
+    stage = _integer(data.get("stage"), "checkpoint.stage", 0, len(stages) - 1)
+    stage_name, kind, wave_max = stages[stage]
     if data.get("stage_name") != stage_name or data.get("kind") != kind:
         _fail("checkpoint stage identity does not match stage table")
     wave = _integer(data.get("wave"), "checkpoint.wave", 1, wave_max)
@@ -102,8 +105,11 @@ def _validate_checkpoint(value: Any) -> dict:
     # Preserve omission in legacy v2 records; do not rewrite their content.
     if "bag_potions" in loot:
         normalized_loot["bag_potions"] = potions
-    return {"stage": stage, "stage_name": stage_name, "kind": kind, "wave": wave,
-            "hp": hp, "psi": psi, "upgrades": normalized_levels, "kills": kills, "loot": normalized_loot}
+    result = {"stage": stage, "stage_name": stage_name, "kind": kind, "wave": wave,
+              "hp": hp, "psi": psi, "upgrades": normalized_levels, "kills": kills, "loot": normalized_loot}
+    if "campaign_version" in data:
+        result["campaign_version"] = campaign
+    return result
 
 
 def canonical_save(record: object, save_id: str) -> tuple[str, str]:

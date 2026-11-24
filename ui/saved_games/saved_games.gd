@@ -338,7 +338,9 @@ func _entry_by_id(id: String) -> Dictionary:
 
 
 func _entry_name(entry: Dictionary) -> String:
-	return "Autosave" if bool(entry.get("automatic", false)) else str(entry.get("name", ""))
+	if bool(entry.get("automatic", false)):
+		return "Legacy Autosave" if entry.get("campaign_version", StageData.LEGACY_VERSION) == StageData.LEGACY_VERSION else "Autosave"
+	return str(entry.get("name", ""))
 
 
 func _refresh_entries() -> void:
@@ -648,7 +650,8 @@ func _conflict_summary(record: Dictionary, metadata: Dictionary, local_deleted :
 	var save_name := str(record.get("name", cloud_summary.get("name", "Save")))
 	var deleted := bool(metadata.get("deleted", false))
 	var availability := "LOCAL COPY DELETED" if local_deleted else ("DELETED ON CLOUD" if deleted else "AVAILABLE")
-	return "%s\nSTAGE %s / WAVE %s\nHP %s\n%s\n%s" % [save_name, stage, wave, hp, saved, availability]
+	var campaign := "LEGACY" if StageData.checkpoint_version(source) == StageData.LEGACY_VERSION else "CURRENT"
+	return "%s\n%s / STAGE %s / WAVE %s\nHP %s\n%s\n%s" % [save_name, campaign, stage, wave, hp, saved, availability]
 
 
 func _resolve_conflict(choice: String) -> void:

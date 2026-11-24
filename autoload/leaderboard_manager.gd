@@ -5,7 +5,9 @@ signal board_changed()
 signal personal_changed()
 signal run_status_changed()
 
-const RULESET := "survival_v1"
+const RULESET := StageData.LEGACY_RULESET
+const EMPTY_BOARD := {"entries": [], "loading": false, "error": "", "next_cursor": "", "cached": false, "updated_at": 0}
+const EMPTY_PERSONAL := {"best": {}, "neighbors": [], "loading": false, "error": ""}
 const CLIENT_VERSION := "1.1.0"
 const ROOT := "user://leaderboard"
 const MAX_BYTES := 65536
@@ -23,8 +25,9 @@ var _serial := 0
 var _run: Dictionary = {}
 var _stats_due := 0
 var _submit_due := 0
-var _board: Dictionary = {"entries": [], "loading": false, "error": "", "next_cursor": "", "cached": false, "updated_at": 0}
-var _personal: Dictionary = {"best": {}, "neighbors": [], "loading": false, "error": ""}
+var board_ruleset := RULESET
+var _board := EMPTY_BOARD.duplicate(true)
+var _personal := EMPTY_PERSONAL.duplicate(true)
 
 
 func _ready() -> void:
@@ -65,7 +68,7 @@ func _process(_delta: float) -> void:
 			_send("submit", "/ranked-runs/" + item["run_id"] + "/result", HTTPClient.METHOD_PUT, item["body"], _identity, {"run_id": item["run_id"]})
 
 
-func begin_run(continued: bool = false) -> void:
+func begin_run(continued: bool = false, ruleset: String = RULESET) -> void:
 	_serial += 1
 	_cancel("grant")
 	_retries.erase("grant")
@@ -73,7 +76,7 @@ func begin_run(continued: bool = false) -> void:
 	var reason := "CONTINUED RUN" if continued else "SIGN IN BEFORE START"
 	if LevelManager.practice_mode:
 		reason = "PRACTICE MODE"
-	_run = {"owner": owner, "serial": _serial, "sealed": false, "grant": {}, "status": "NOT RANKED", "reason": reason, "rank": 0, "result_id": ""}
+	_run = {"ruleset_id": ruleset, "owner": owner, "serial": _serial, "sealed": false, "grant": {}, "status": "NOT RANKED", "reason": reason, "rank": 0, "result_id": ""}
 	if not continued and not LevelManager.practice_mode and network_enabled and AuthManager.authenticated and owner == AuthManager.user_id:
 		_run["status"] = "PREPARING"
 		_run["reason"] = "CHECKING ONLINE START"
@@ -86,7 +89,7 @@ func _prepare_grant() -> void:
 	if _run.is_empty() or bool(_run["sealed"]) or _run["owner"] != _identity:
 		return
 	_send("grant", "/ranked-runs", HTTPClient.METHOD_POST,
-		{"operation_id": _run["operation_id"], "ruleset_id": RULESET, "client_version": CLIENT_VERSION},
+		{"operation_id": _run["operation_id"], "ruleset_id": _run["ruleset_id"], "client_version": CLIENT_VERSION},
 		str(_run["owner"]), {"serial": _serial})
 
 
@@ -111,10 +114,10 @@ func finish_run(snapshot: Dictionary) -> void:
 	seal_run()
 	if _run.is_empty() or _run["grant"].is_empty() or str(_run["status"]) != "RANKED":
 		return
-	var body := {"ruleset_id": RULESET, "client_version": CLIENT_VERSION,
+	var body := {"ruleset_id": _run["ruleset_id"], "client_version": CLIENT_VERSION,
 		"victory": snapshot.get("victory", false), "kills": snapshot.get("kills", 0),
 		"elapsed_ms": snapshot.get("elapsed_ms", 0), "milestone_ms": snapshot.get("milestone_ms", [])}
-	if not _valid_result(body) or snapshot.get("continued", false) or snapshot.get("practice", false):
+	if snapshot.get("ruleset_id", RULESET) != body["ruleset_id"] or not _valid_result(body) or snapshot.get("continued", false) or snapshot.get("practice", false):
 		_set_status("NOT RANKED", "INVALID RUN TIMES")
 		return
 	var owner := str(_run["owner"])
@@ -146,6 +149,20 @@ func _set_status(status: String, reason: String, rank: int = 0) -> void:
 	run_status_changed.emit()
 
 
+func select_ruleset(ruleset: String) -> void:
+	if ruleset == board_ruleset or StageData.milestones_for_ruleset(ruleset) == 0:
+		return
+	for kind in ["board", "personal"]:
+		_cancel(kind)
+		_retries.erase(kind)
+	board_ruleset = ruleset
+	_board = EMPTY_BOARD.duplicate(true)
+	_load_board_cache()
+	_load_personal_cache()
+	board_changed.emit()
+	personal_changed.emit()
+
+
 func fetch_board(refresh: bool = true) -> void:
 	if _active.has("board") or bool(_board["loading"]):
 		return
@@ -160,7 +177,7 @@ func fetch_board(refresh: bool = true) -> void:
 	_board["loading"] = true
 	_board["error"] = ""
 	board_changed.emit()
-	_send("board", "/leaderboards?ruleset_id=" + RULESET + ("&cursor=" + cursor.uri_encode() if not cursor.is_empty() else ""), HTTPClient.METHOD_GET, {}, "", {"refresh": refresh}, false)
+	_send("board", "/leaderboards?ruleset_id=" + board_ruleset + ("&cursor=" + cursor.uri_encode() if not cursor.is_empty() else ""), HTTPClient.METHOD_GET, {}, "", {"refresh": refresh, "ruleset_id": board_ruleset}, false)
 
 
 func fetch_personal() -> void:
@@ -173,7 +190,7 @@ func fetch_personal() -> void:
 	_personal["loading"] = true
 	_personal["error"] = ""
 	personal_changed.emit()
-	_send("personal", "/me/leaderboard?ruleset_id=" + RULESET, HTTPClient.METHOD_GET, {}, _identity)
+	_send("personal", "/me/leaderboard?ruleset_id=" + board_ruleset, HTTPClient.METHOD_GET, {}, _identity, {"ruleset_id": board_ruleset})
 
 
 func get_board_state() -> Dictionary:
@@ -207,14 +224,10 @@ func _on_session_changed() -> void:
 		if kind != "board":
 			_cancel(kind)
 	_retries.clear()
-	_personal = {"best": {}, "neighbors": [], "loading": false, "error": ""}
+	_load_personal_cache()
 	if next.is_empty() and _run.get("status", "") == "UPLOADING":
 		_set_status("PENDING", "SIGN IN TO RETRY")
 	if not next.is_empty():
-		var profile := _profile(next)
-		_personal["best"] = profile.get("best", {}).duplicate(true)
-		if not _personal["best"].is_empty():
-			_personal["error"] = "Cached personal rank - refresh to update"
 		_stats_due = 0
 		_submit_due = 0
 		if not _run.is_empty() and not str(_run["owner"]).is_empty() and str(_run["owner"]) != next and _run["owner"] != "guest":
@@ -302,12 +315,15 @@ func _accepted(job: Dictionary, data: Dictionary) -> bool:
 	if kind == "grant":
 		if int(job["serial"]) != _serial or _run.is_empty() or bool(_run["sealed"]):
 			return true
-		if not _valid_grant(data):
+		if not _valid_grant(data, _run.get("ruleset_id", RULESET)):
 			return false
 		_run["grant"] = data
 		_set_status("RANKED", "ONLINE START CONFIRMED")
 	elif kind == "board":
-		if not _valid_entries(data.get("entries"), 20) or data.get("ruleset_id") != RULESET or not _integer(data.get("generated_at"), 0, 9007199254740991):
+		var ruleset: String = job.get("ruleset_id", RULESET)
+		if ruleset != board_ruleset:
+			return true
+		if not _valid_entries(data.get("entries"), 20, ruleset) or data.get("ruleset_id") != ruleset or not _integer(data.get("generated_at"), 0, 9007199254740991):
 			return false
 		var cursor: Variant = data.get("next_cursor")
 		if cursor != null and (not cursor is String or str(cursor).length() > 512):
@@ -326,15 +342,21 @@ func _accepted(job: Dictionary, data: Dictionary) -> bool:
 			entries = entries.slice(entries.size() - 200)
 		_board = {"entries": entries, "loading": false, "error": "", "next_cursor": "" if cursor == null else cursor, "cached": false, "updated_at": int(data["generated_at"])}
 		if job["refresh"]:
-			_write(ROOT + "/board_cache.json", {"version": 1, "ruleset_id": RULESET, "entries": entries, "updated_at": _board["updated_at"]})
+			_write(_board_cache_path(), {"version": 1, "ruleset_id": ruleset, "entries": entries, "updated_at": _board["updated_at"]})
 		board_changed.emit()
 	elif kind == "personal":
-		if not data.has("best") or data.get("ruleset_id") != RULESET or not _valid_entries(data.get("neighbors"), 5) or (data.get("best") != null and not _valid_entry(data["best"])):
+		var ruleset: String = job.get("ruleset_id", RULESET)
+		if ruleset != board_ruleset:
+			return true
+		if not data.has("best") or data.get("ruleset_id") != ruleset or not _valid_entries(data.get("neighbors"), 5, ruleset) or (data.get("best") != null and not _valid_entry(data["best"], ruleset)):
 			return false
 		var best: Dictionary = {} if data["best"] == null else _entry(data["best"])
 		_personal = {"best": best, "neighbors": data["neighbors"].map(_entry), "loading": false, "error": ""}
-		_profile(owner)["best"] = best
-		_save_profile(owner)
+		if ruleset == RULESET:
+			_profile(owner)["best"] = best
+			_save_profile(owner)
+		else:
+			_write(_personal_cache_path(owner), best)
 		personal_changed.emit()
 	elif kind == "stats":
 		if not _integer(data.get("best_kills"), 0, 2147483647):
@@ -347,18 +369,22 @@ func _accepted(job: Dictionary, data: Dictionary) -> bool:
 		if local > int(data["best_kills"]):
 			_send("stats", "/me/stats", HTTPClient.METHOD_PUT, {"best_kills": local}, owner)
 	elif kind == "submit":
-		if not data.has("best") or data.get("run_id") != job["run_id"] or not data.get("accepted") is bool or data.get("accepted") != true or data.get("ruleset_id") != RULESET or not _integer(data.get("progress"), 0, 9) or not _integer(data.get("rank_time_ms"), 0, 86400000):
+		var submitted: Dictionary = job.get("body", {})
+		var ruleset: String = submitted.get("ruleset_id", RULESET)
+		var limit := StageData.milestones_for_ruleset(ruleset)
+		if not data.has("best") or data.get("run_id") != job["run_id"] or not data.get("accepted") is bool or data.get("accepted") != true or data.get("ruleset_id") != ruleset or not _integer(data.get("progress"), 0, limit) or not _integer(data.get("rank_time_ms"), 0, 86400000):
 			return false
-		if data.get("best") != null and not _valid_entry(data["best"]):
+		if data.get("best") != null and not _valid_entry(data["best"], ruleset):
 			return false
-		var times: Array = job["body"]["milestone_ms"]
+		var times: Array = submitted.get("milestone_ms", [])
 		if int(data["progress"]) != times.size() or int(data["rank_time_ms"]) != (0 if times.is_empty() else int(times[-1])) or not data.get("improved") is bool:
 			return false
 		_remove_pending(owner, str(job["run_id"]))
 		if _run.get("result_id", "") == job["run_id"]:
 			_set_status("UPLOADED", "RESULT CONFIRMED", int(data["best"]["rank"]) if data["best"] != null else 0)
 		_submit_due = 0
-		fetch_personal()
+		if ruleset == board_ruleset:
+			fetch_personal()
 	return true
 
 
@@ -431,9 +457,27 @@ func _save_profile(owner: String) -> bool:
 	return _write(_profile_path(owner), _profile(owner))
 
 
+func _board_cache_path() -> String:
+	return ROOT + ("/board_cache.json" if board_ruleset == RULESET else "/board_cache_" + board_ruleset + ".json")
+
+
+func _personal_cache_path(owner: String) -> String:
+	return ROOT + "/" + owner.sha256_text() + "_best_" + board_ruleset + ".json"
+
+
+func _load_personal_cache() -> void:
+	_personal = EMPTY_PERSONAL.duplicate(true)
+	if _identity.is_empty():
+		return
+	var best: Dictionary = _profile(_identity)["best"] if board_ruleset == RULESET else _read(_personal_cache_path(_identity))
+	if _valid_entry(best, board_ruleset):
+		_personal["best"] = best.duplicate(true)
+		_personal["error"] = "Cached personal rank - refresh to update"
+
+
 func _load_board_cache() -> void:
-	var data := _read(ROOT + "/board_cache.json")
-	if data.get("version") == 1 and data.get("ruleset_id") == RULESET and _valid_entries(data.get("entries"), 20) and _integer(data.get("updated_at"), 0, 9007199254740991):
+	var data := _read(_board_cache_path())
+	if data.get("version") == 1 and data.get("ruleset_id") == board_ruleset and _valid_entries(data.get("entries"), 20, board_ruleset) and _integer(data.get("updated_at"), 0, 9007199254740991):
 		_board["entries"] = data["entries"].map(_entry)
 		_board["updated_at"] = int(data["updated_at"])
 		_board["cached"] = true
@@ -489,15 +533,16 @@ func _uuid() -> String:
 	return "%s-%s-%s-%s-%s" % [text.substr(0, 8), text.substr(8, 4), text.substr(12, 4), text.substr(16, 4), text.substr(20)]
 
 
-func _valid_grant(data: Dictionary) -> bool:
-	return _is_uuid(data.get("run_id")) and data.get("ruleset_id") == RULESET and data.get("client_version") == CLIENT_VERSION and _integer(data.get("issued_at"), 1, 9007199254740991) and _integer(data.get("server_time"), 1, 9007199254740991) and _integer(data.get("expires_at"), 1, 9007199254740991) and int(data["expires_at"]) - int(data["issued_at"]) == 86400
+func _valid_grant(data: Dictionary, ruleset: String = RULESET) -> bool:
+	return _is_uuid(data.get("run_id")) and data.get("ruleset_id") == ruleset and data.get("client_version") == CLIENT_VERSION and _integer(data.get("issued_at"), 1, 9007199254740991) and _integer(data.get("server_time"), 1, 9007199254740991) and _integer(data.get("expires_at"), 1, 9007199254740991) and int(data["expires_at"]) - int(data["issued_at"]) == 86400
 
 
 func _valid_result(value: Variant) -> bool:
-	if not value is Dictionary or value.get("ruleset_id") != RULESET or not value.get("client_version") is String or RegEx.create_from_string("^[A-Za-z0-9._+-]{1,32}$").search(value["client_version"]) == null or not value.get("victory") is bool or not _integer(value.get("kills"), 0, 2147483647) or not _integer(value.get("elapsed_ms"), 0, 86400000) or not value.get("milestone_ms") is Array:
+	if not value is Dictionary or not value.get("client_version") is String or RegEx.create_from_string("^[A-Za-z0-9._+-]{1,32}$").search(value["client_version"]) == null or not value.get("victory") is bool or not _integer(value.get("kills"), 0, 2147483647) or not _integer(value.get("elapsed_ms"), 0, 86400000) or not value.get("milestone_ms") is Array:
 		return false
 	var times: Array = value["milestone_ms"]
-	if times.size() > 9 or bool(value["victory"]) != (times.size() == 9):
+	var limit := StageData.milestones_for_ruleset(value.get("ruleset_id"))
+	if limit == 0 or times.size() > limit or bool(value["victory"]) != (times.size() == limit):
 		return false
 	var previous := 0
 	for time in times:
@@ -511,20 +556,21 @@ func _result_body(value: Dictionary) -> Dictionary:
 	var times: Array[int] = []
 	for time in value["milestone_ms"]:
 		times.append(int(time))
-	return {"ruleset_id": RULESET, "client_version": str(value["client_version"]), "victory": bool(value["victory"]), "kills": int(value["kills"]), "elapsed_ms": int(value["elapsed_ms"]), "milestone_ms": times}
+	return {"ruleset_id": str(value["ruleset_id"]), "client_version": str(value["client_version"]), "victory": bool(value["victory"]), "kills": int(value["kills"]), "elapsed_ms": int(value["elapsed_ms"]), "milestone_ms": times}
 
 
-func _valid_entries(value: Variant, limit: int) -> bool:
+func _valid_entries(value: Variant, limit: int, ruleset: String = RULESET) -> bool:
 	if not value is Array or value.size() > limit:
 		return false
 	for row in value:
-		if not _valid_entry(row):
+		if not _valid_entry(row, ruleset):
 			return false
 	return true
 
 
-func _valid_entry(value: Variant) -> bool:
-	return value is Dictionary and _is_uuid(value.get("entry_id")) and value.get("player_name") is String and str(value["player_name"]).length() <= 24 and _integer(value.get("rank"), 1, 9007199254740991) and _integer(value.get("progress"), 1, 9) and _integer(value.get("rank_time_ms"), 1, 86400000) and _integer(value.get("elapsed_ms"), int(value.get("rank_time_ms", 0)), 86400000) and _integer(value.get("kills"), 0, 2147483647) and value.get("victory") is bool and bool(value["victory"]) == (int(value["progress"]) == 9) and _integer(value.get("achieved_at"), 0, 9007199254740991)
+func _valid_entry(value: Variant, ruleset: String = RULESET) -> bool:
+	var limit := StageData.milestones_for_ruleset(ruleset)
+	return value is Dictionary and _is_uuid(value.get("entry_id")) and value.get("player_name") is String and str(value["player_name"]).length() <= 24 and _integer(value.get("rank"), 1, 9007199254740991) and _integer(value.get("progress"), 1, limit) and _integer(value.get("rank_time_ms"), 1, 86400000) and _integer(value.get("elapsed_ms"), int(value.get("rank_time_ms", 0)), 86400000) and _integer(value.get("kills"), 0, 2147483647) and value.get("victory") is bool and bool(value["victory"]) == (int(value["progress"]) == limit) and _integer(value.get("achieved_at"), 0, 9007199254740991)
 
 
 func _entry(value: Dictionary) -> Dictionary:

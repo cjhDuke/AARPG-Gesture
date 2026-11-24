@@ -313,8 +313,8 @@ func _render_live_state() -> void:
 func _format_personal_best(best: Dictionary, label: String) -> String:
 	var rank := int(best.get("rank", 0))
 	var place := "#%d" % rank if rank > 0 else "UNRANKED"
-	return "BEST KILLS %d  |  %s %s  %d/9  %s" % [
-		_best_kills, label, place, int(best.get("progress", 0)),
+	return "BEST KILLS %d  |  %s %s  %d/%d  %s" % [
+		_best_kills, label, place, int(best.get("progress", 0)), _milestone_total(),
 		RunStats.format_time(int(best.get("rank_time_ms", 0)))
 	]
 
@@ -386,7 +386,7 @@ func _add_row(row: Dictionary, i: int, is_me: bool) -> void:
 	player_name.position.x = 48
 	player_name.size = Vector2(176, 17)
 	cells.add_child(player_name)
-	var progress := _label("%d/9" % int(row.get("progress", 0)), 9)
+	var progress := _label("%d/%d" % [int(row.get("progress", 0)), _milestone_total()], 9)
 	progress.position.x = 232
 	progress.size = Vector2(60, 17)
 	cells.add_child(progress)
@@ -408,6 +408,10 @@ func _render_rows() -> void:
 		_status.text = "DESIGN PREVIEW - SAMPLE DATA"
 	else:
 		_render_live_state()
+
+
+func _milestone_total() -> int:
+	return StageData.milestones_for_ruleset(StageData.CURRENT_RULESET)
 
 
 func _refresh_pressed() -> void:

@@ -4,7 +4,7 @@ extends Node
 const TITLE_SCENE := "res://ui/title/title_scene.tscn"
 const CONFIG_ARG := "--client-config="
 const ROLE_ARG := "--client-role="
-const VALID_ROLES := ["a-seed", "a-retry", "b-verify", "c-verify", "practice"]
+const VALID_ROLES := ["a-seed", "a-retry", "b-verify", "c-verify", "current-play", "practice"]
 
 var _driver := false
 var _role := ""
@@ -103,6 +103,8 @@ func _execute() -> void:
 		await _run_a_retry(str(account["id"]))
 	elif _role == "c-verify":
 		await _run_c_verify(title, str(account["id"]))
+	elif _role == "current-play":
+		await _run_current(title)
 	_finish()
 
 
@@ -168,6 +170,22 @@ func _record_milestones(count: int) -> void:
 
 
 var _last_mark_ms := 0
+
+
+func _run_current(title: Node) -> void:
+	var arena := await _open_arena(title)
+	if arena == null or LeaderboardManager.get_run_status().get("status") != "RANKED":
+		return
+	_check(arena.stage_count() == 4 and LeaderboardManager._run["grant"]["ruleset_id"] == "survival_v2", "New START receives a v2 credential")
+	_last_mark_ms = Time.get_ticks_msec()
+	await _record_milestones(11)
+	arena._end_run(true)
+	_check(await _wait_for(func() -> bool: return LeaderboardManager.get_run_status().get("status") == "UPLOADED", 15.0), "Eleven milestones upload as a ranked victory")
+	arena.hud._open_leaderboard()
+	await _wait_for(func() -> bool: return not LeaderboardManager.get_board_state()["loading"] and not LeaderboardManager.get_personal_state()["loading"], 15.0)
+	_check(LeaderboardManager.board_ruleset == "survival_v2" and LeaderboardManager.get_personal_state().get("best", {}).get("progress") == 11, "Results open current personal ranking")
+	var panel := arena.hud._leaderboard
+	_check(panel.get("_current_button") == null and panel.get("_legacy_button") == null, "Online leaderboard UI has no ruleset switch controls")
 
 
 func _run_a_seed(title: Node, owner: String) -> void:

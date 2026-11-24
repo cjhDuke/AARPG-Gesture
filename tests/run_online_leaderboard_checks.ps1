@@ -80,12 +80,14 @@ try {
 	$fixtureConfig = Get-Content -LiteralPath $config -Raw | ConvertFrom-Json
 	$api = [string]$fixtureConfig.api
 	$baseArgs = @('--no-gesture-autostart', "--auth-api=$api", "--client-config=$config")
+	$oldArgs = $baseArgs + @('--legacy-campaign')
 	Invoke-Godot 'bridge' 'tests/account_service_transport_test.tscn' (Join-Path $runDir 'appdata-bridge') (@('--leaderboard-offline') + $baseArgs) 'account_service_transport_test: 12 checks passed'
 	Invoke-Godot 'manager' 'tests/leaderboard_manager_test.tscn' (Join-Path $runDir 'appdata-manager') (@('--leaderboard-offline') + $baseArgs) 'LEADERBOARD_MANAGER_TEST checks=\d+ failures=0'
-	Invoke-Godot 'a-seed' 'tests/leaderboard_client_test.tscn' (Join-Path $runDir 'appdata-a') ($baseArgs + @('--client-role=a-seed')) 'leaderboard_client_test role=a-seed checks=\d+ passed'
-	Invoke-Godot 'b-verify' 'tests/leaderboard_client_test.tscn' (Join-Path $runDir 'appdata-b') ($baseArgs + @('--client-role=b-verify')) 'leaderboard_client_test role=b-verify checks=\d+ passed'
-	Invoke-Godot 'a-retry' 'tests/leaderboard_client_test.tscn' (Join-Path $runDir 'appdata-a') ($baseArgs + @('--client-role=a-retry')) 'leaderboard_client_test role=a-retry checks=\d+ passed'
-	Invoke-Godot 'c-verify' 'tests/leaderboard_client_test.tscn' (Join-Path $runDir 'appdata-c') ($baseArgs + @('--client-role=c-verify') + $(if ($CapturePreview) { @('--capture-previews') } else { @() })) 'leaderboard_client_test role=c-verify checks=\d+ passed'
+	Invoke-Godot 'a-seed' 'tests/leaderboard_client_test.tscn' (Join-Path $runDir 'appdata-a') ($oldArgs + @('--client-role=a-seed')) 'leaderboard_client_test role=a-seed checks=\d+ passed'
+	Invoke-Godot 'b-verify' 'tests/leaderboard_client_test.tscn' (Join-Path $runDir 'appdata-b') ($oldArgs + @('--client-role=b-verify')) 'leaderboard_client_test role=b-verify checks=\d+ passed'
+	Invoke-Godot 'a-retry' 'tests/leaderboard_client_test.tscn' (Join-Path $runDir 'appdata-a') ($oldArgs + @('--client-role=a-retry')) 'leaderboard_client_test role=a-retry checks=\d+ passed'
+	Invoke-Godot 'c-verify' 'tests/leaderboard_client_test.tscn' (Join-Path $runDir 'appdata-c') ($oldArgs + @('--client-role=c-verify') + $(if ($CapturePreview) { @('--capture-previews') } else { @() })) 'leaderboard_client_test role=c-verify checks=\d+ passed'
+	Invoke-Godot 'current-play' 'tests/leaderboard_client_test.tscn' (Join-Path $runDir 'appdata-current') ($baseArgs + @('--client-role=current-play')) 'leaderboard_client_test role=current-play checks=\d+ passed'
 	Invoke-Godot 'practice' 'tests/leaderboard_client_test.tscn' (Join-Path $runDir 'appdata-practice') (@('--practice') + $baseArgs + @('--client-role=practice')) 'leaderboard_client_test role=practice checks=\d+ passed'
 	if ((Get-Item -LiteralPath $fixtureErr).Length -gt 0) { throw "Fixture wrote to stderr; inspect retained logs in $logs" }
 	Write-Host "Online leaderboard checks passed. Logs retained at $logs"

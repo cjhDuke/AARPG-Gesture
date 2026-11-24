@@ -5,6 +5,7 @@ signal enemy_killed
 ## 敌人被消灭（带上是哪个敌人、致命一击的判定框），先于 enemy_killed / wave_cleared 发出，给掉落用
 signal enemy_destroyed_at( enemy : Enemy, hit_box : HitBox )
 signal wave_cleared
+signal scheduled_spawned( type_name: String )
 
 ## 怪物类型名 -> 场景。波次表里的 "enemies" 用这里的名字计数。
 const REGISTRY : Dictionary = {
@@ -23,8 +24,15 @@ const SPAWN_BLOCK_MARGIN : float = 14.0
 
 ## 敌人加到父节点（关卡根）下，和主角同层才能一起按 y 排序。本节点需放在原点。
 @onready var enemy_parent : Node = get_parent()
+var sort_enemies_with_player := false
 
 var _queue : Array[PackedScene] = []
+var _scheduled: Array[Dictionary] = []
+var _wave_time := 0.0
+var _spawn_zones: Dictionary = {}
+var _named_archer_anchors: Dictionary = {}
+var _route_to_player: Callable
+var _clear_generation := 0
 var _interval : float = 1.0
 var _timer : float = 0.0
 var _alive : int = 0
@@ -40,7 +48,13 @@ var _spot_owners : Array[Enemy] = []
 
 
 func _process( delta : float ) -> void:
-	if not _running or _queue.is_empty():
+	if not _running:
+		return
+	if not _scheduled.is_empty():
+		_wave_time += delta
+		_spawn_due_enemy()
+		return
+	if _queue.is_empty():
 		return
 	_timer -= delta
 	if _timer <= 0.0:
@@ -51,6 +65,10 @@ func _process( delta : float ) -> void:
 ## 开始一波。wave 是关卡表里的一项：{ "enemies": { 类型名: 数量 }, "interval": 秒 }
 func start_wave( wave : Dictionary ) -> void:
 	_queue.clear()
+	_scheduled.clear()
+	_spawn_zones.clear()
+	_named_archer_anchors.clear()
+	_route_to_player = Callable()
 	var enemies : Dictionary = wave["enemies"]
 	for type_name : String in enemies:
 		for i in int( enemies[type_name] ):
@@ -61,6 +79,69 @@ func start_wave( wave : Dictionary ) -> void:
 	_alive = 0
 	_wave_id += 1
 	_running = true
+
+
+## 每批用 zone 取地面出生点，或用 anchor 指定高台弓手站位。
+func start_scheduled_wave( batches: Array, zones: Dictionary, route: Callable, anchors: Dictionary = {} ) -> void:
+	_queue.clear()
+	_scheduled.clear()
+	_spawn_zones = zones.duplicate()
+	_named_archer_anchors = anchors.duplicate()
+	_route_to_player = route
+	_wave_time = 0.0
+	_alive = 0
+	_wave_id += 1
+	_running = true
+	for batch: Dictionary in batches:
+		var time := float( batch["time"] )
+		for type_name: String in batch["enemies"]:
+			for i in int( batch["enemies"][type_name] ):
+				_scheduled.append( {
+					"time": time, "zone": batch.get( "zone", "" ), "anchor": batch.get( "anchor", "" ),
+					"type": type_name, "order": _scheduled.size(),
+				} )
+				time += float( batch.get( "interval", 0.8 ) )
+	_scheduled.sort_custom( func( first: Dictionary, second: Dictionary ) -> bool:
+		if is_equal_approx( float( first["time"] ), float( second["time"] ) ):
+			return int( first["order"] ) < int( second["order"] )
+		return float( first["time"] ) < float( second["time"] )
+	)
+
+
+func _spawn_due_enemy() -> void:
+	for i in _scheduled.size():
+		var entry := _scheduled[i]
+		if float( entry["time"] ) > _wave_time:
+			continue
+		var spot := -1
+		var pos: Variant
+		if not String( entry["anchor"] ).is_empty():
+			spot = archer_spots.find( _named_archer_anchors[entry["anchor"]] )
+			if spot < 0 or not _archer_spot_open( spot ):
+				continue
+			pos = archer_spots[spot]
+		else:
+			pos = _safe_scheduled_position( entry["zone"] )
+			if pos == null:
+				continue
+		_scheduled.remove_at( i )
+		var type_name: String = entry["type"]
+		_spawn( _resolve_scene( type_name ), pos, spot )
+		scheduled_spawned.emit( type_name )
+		return
+
+
+func _safe_scheduled_position( zone: String ) -> Variant:
+	var player_pos := PlayerManager.player.global_position
+	for points: Array in [ _spawn_zones[zone], _spawn_zones.get( zone + "_wide", [] ), _spawn_zones.get( "fallback", [] ) ]:
+		if points.is_empty():
+			continue
+		var first := randi_range( 0, points.size() - 1 )
+		for i in points.size():
+			var pos: Vector2 = points[(first + i) % points.size()]
+			if not _is_blocked( pos ) and pos.distance_to( player_pos ) >= MIN_SPAWN_DIST:
+				return pos
+	return null
 
 
 ## 额外生成一只怪（比如大史莱姆死后分裂）。scene_or_type 可以是 PackedScene 或注册表里的类型名。
@@ -82,6 +163,11 @@ func _resolve_scene( scene_or_type : Variant ) -> PackedScene:
 func clear() -> void:
 	_running = false
 	_queue.clear()
+	_scheduled.clear()
+	_spawn_zones.clear()
+	_named_archer_anchors.clear()
+	_route_to_player = Callable()
+	_clear_generation += 1
 	_alive = 0
 	_spot_owners.clear()
 	for c in enemy_parent.get_children():
@@ -97,10 +183,14 @@ func _clear_projectiles() -> void:
 
 
 ## 生成一只怪并计入存活数；默认放在边缘随机位置
-func _spawn( scene : PackedScene, pos : Variant = null ) -> Enemy:
+func _spawn( scene : PackedScene, pos : Variant = null, spot: int = -1 ) -> Enemy:
 	var enemy : Enemy = scene.instantiate()
+	if sort_enemies_with_player:
+		enemy.z_index = PlayerManager.player.z_index
+	enemy.route_to_player = _route_to_player
 	if enemy is ArcherGoblin:
-		var spot : int = _free_archer_spot()
+		if spot < 0 and _named_archer_anchors.is_empty():
+			spot = _free_archer_spot()
 		if spot >= 0:
 			# 站位空着：站到高台上，原地不动
 			pos = archer_spots[spot]
@@ -113,23 +203,27 @@ func _spawn( scene : PackedScene, pos : Variant = null ) -> Enemy:
 	enemy.enemy_destroyed.connect( _on_enemy_destroyed.bind( enemy ) )
 	_alive += 1
 	# 敌人被打死的回调里（物理查询刷新期间）直接 add_child 会报错，所以统一延后到本帧末加入场景
-	_add_enemy.call_deferred( enemy, pos if pos != null else pick_spawn_position() )
+	_add_enemy.call_deferred( enemy, pos if pos != null else pick_spawn_position(), _clear_generation )
 	return enemy
 
 
 ## 第一个空闲的弓手站位（上面没有活着的弓手）；没有返回 -1
 func _free_archer_spot() -> int:
-	while _spot_owners.size() < archer_spots.size():
-		_spot_owners.append( null )
 	for i in archer_spots.size():
-		var owner_enemy : Enemy = _spot_owners[i]
-		if owner_enemy == null or not is_instance_valid( owner_enemy ) or owner_enemy._is_defeated:
+		if _archer_spot_open( i ):
 			return i
 	return -1
 
 
-func _add_enemy( enemy : Enemy, pos : Vector2 ) -> void:
-	if not is_instance_valid( enemy_parent ) or not enemy_parent.is_inside_tree():
+func _archer_spot_open( index: int ) -> bool:
+	while _spot_owners.size() < archer_spots.size():
+		_spot_owners.append( null )
+	var owner_enemy: Enemy = _spot_owners[index]
+	return not is_instance_valid( owner_enemy ) or owner_enemy._is_defeated
+
+
+func _add_enemy( enemy : Enemy, pos : Vector2, generation: int ) -> void:
+	if generation != _clear_generation or not is_instance_valid( enemy_parent ) or not enemy_parent.is_inside_tree():
 		enemy.queue_free()
 		return
 	enemy_parent.add_child( enemy )
@@ -181,12 +275,14 @@ func _is_blocked( pos : Vector2 ) -> bool:
 
 
 func _on_enemy_destroyed( hit_box : HitBox, enemy : Enemy ) -> void:
+	if enemy.is_queued_for_deletion():
+		return
 	if enemy.get_meta( "wave_id", -1 ) == _wave_id:
 		_alive -= 1
 	enemy.on_defeated( self )
 	enemy_destroyed_at.emit( enemy, hit_box )
 	enemy_killed.emit()
-	if _running and _queue.is_empty() and _alive <= 0:
+	if _running and _queue.is_empty() and _scheduled.is_empty() and _alive <= 0:
 		_running = false
 		_clear_projectiles()
 		wave_cleared.emit()

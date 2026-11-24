@@ -27,6 +27,8 @@ var _slow_left : float = 0.0
 var _slow_base_tint : Color = Color.WHITE
 ## 正在淡入生成中，状态脚本据此暂缓开启攻击判定
 var spawning : bool = false
+## 可选的绕行目标，由有实体障碍的练习布局提供。
+var route_to_player: Callable
 
 @onready var animation_player: AnimationPlayer = $AnimationPlayer
 @onready var sprite_2d: Sprite2D = $Sprite2D
