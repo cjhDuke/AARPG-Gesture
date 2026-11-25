@@ -8,6 +8,8 @@
 /build/
 /bin/
 /dist/
+/platform/windows/launcher/bin/
+/platform/windows/launcher/obj/
 
 # Python 字节码、虚拟环境与工具缓存
 __pycache__/

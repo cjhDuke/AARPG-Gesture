@@ -1,6 +1,6 @@
 # PSI HAND
 
-[![版本 1.1.0](https://img.shields.io/badge/Version-1.1.0-A26935)](docs/releases/v1.1.0.md)
+[![版本 1.2.0](https://img.shields.io/badge/Version-1.2.0-A26935)](docs/releases/v1.2.0.md)
 [![Godot 4.6.3](https://img.shields.io/badge/Godot-4.6.3-478CBF?logo=godotengine&logoColor=white)](project.godot)
 [![OpenCV 手势识别](https://img.shields.io/badge/OpenCV-Hand%20Tracking-29776E?logo=opencv&logoColor=white)](#工作原理)
 [![Windows x64](https://img.shields.io/badge/Windows-x64-395C9E)](#安装)
@@ -20,15 +20,19 @@
 
 ## 安装
 
-Windows x64 包发布后可从 [Releases](https://github.com/cjhDuke/AARPG-Gesture/releases) 下载。将 ZIP 完整解压，运行 `AARPG-Gesture.exe`，在主菜单选择 **START**。登录提示可用 **X** 或 **Esc** 关闭。
+从 [Releases](https://github.com/cjhDuke/AARPG-Gesture/releases) 下载 `AARPG-Gesture-win-x64-Setup.exe`，安装后从开始菜单或桌面打开 **PSI HAND**。在主菜单选择 **START**。登录提示可用 **X** 或 **Esc** 关闭。
 
-键盘模式无需 Python。想用手势时，连接摄像头并安装 Python 3.12，然后在游戏目录运行：
+每次打开游戏都会后台检查更新。有新版时可选 **UPDATE & START**，游戏优先下载差分更新，安装完成后会自动重开。选 **LATER** 可继续当前版本。差分不可用时会下载整包。
+
+从旧 ZIP 版升级时，先运行一次新版安装器。游戏会继续读取同一 Windows 用户的存档、账号数据和设置。要迁移旧操作框位置，在标题的 **SETTINGS → AUDIO → IMPORT GESTURE SETTINGS** 选择旧目录中的 `gesture/state.json`。先保管好旧目录里的录像和截图，之后可自行清理旧 ZIP 和解压目录。此后的安装版更新会清理废弃程序文件，保留安装版写入用户目录的手势状态、录像和截图。
+
+键盘模式无需 Python。想用手势时，连接摄像头并把 Python 3.12 加入 Windows 的 `PATH`，然后在安装目录运行下列命令。安装目录默认位于 `%LOCALAPPDATA%\AARPG-Gesture\current`。
 
 ```powershell
 python -m pip install -r gesture/requirements.txt
 ```
 
-装好依赖后重启游戏，识别进程会自动启动。使用虚拟环境时，可以从已激活环境的终端启动游戏，或在 `gesture/config.json` 的 `python` 字段指定解释器。
+装好依赖后重启游戏，识别进程会自动启动。使用虚拟环境时，可从已激活环境的终端运行安装目录里的 `PSIHand.exe`。
 
 ## 操作
 

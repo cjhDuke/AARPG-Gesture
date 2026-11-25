@@ -44,6 +44,13 @@ var _account_was_authenticated := false
 var _menu_origin_y := 0.0
 var _menu_position_known := false
 var _menu_tween: Tween
+var _update_dialog: GameUpdateDialog
+var _update_open := false
+var _update_requested := false
+var _update_applying := false
+var _update_target := ""
+var _update_attempt := 0
+var _update_return_focus: Control
 
 
 func _ready() -> void:
@@ -66,6 +73,8 @@ func _ready() -> void:
 	marker.visible = false
 
 	_build_account_entry()
+	if GameUpdate.is_enabled():
+		_build_update_dialog()
 
 	LevelManager.level_load_started.connect(exit_title_screen)
 
@@ -140,7 +149,7 @@ func _show_menu() -> void:
 	tw.tween_property(menu, "modulate:a", 1.0, MENU_SLIDE_TIME)
 	tw.chain().tween_callback(func() -> void:
 		_menu_ready = true
-		if _title_active and not _starting and not _settings_open and not _saved_open and not _leaderboard_open and not _account_open:
+		if _title_active and not _starting and not _has_title_modal():
 			button_start.grab_focus()
 		_sync_account_state.call_deferred())
 
@@ -163,7 +172,7 @@ func _move_marker(button: Button) -> void:
 
 
 func start_game() -> void:
-	if _starting or not _menu_ready or _settings_open or _saved_open or _leaderboard_open or _account_open:
+	if _starting or not _menu_ready or _has_title_modal():
 		return
 	_starting = true
 	play_audio(button_press_audio)
@@ -178,13 +187,13 @@ func start_game() -> void:
 
 
 func quit_game() -> void:
-	if _settings_open or _saved_open or _leaderboard_open or _account_open:
+	if _has_title_modal():
 		return
 	get_tree().quit()
 
 
 func open_settings() -> void:
-	if _starting or not _menu_ready or _settings_open or _saved_open or _leaderboard_open or _account_open:
+	if _starting or not _menu_ready or _has_title_modal():
 		return
 	PauseMenu.show_title_settings()
 	if not PauseMenu.is_paused:
@@ -196,7 +205,7 @@ func open_settings() -> void:
 
 
 func open_saved_games() -> void:
-	if _starting or not _menu_ready or _settings_open or _saved_open or _leaderboard_open or _account_open or not _title_active:
+	if _starting or not _menu_ready or _has_title_modal() or not _title_active:
 		return
 	if not SavedGames.open(true):
 		return
@@ -217,7 +226,7 @@ func _on_settings_closed() -> void:
 
 
 func open_leaderboard() -> void:
-	if _starting or not _menu_ready or _settings_open or _saved_open or _leaderboard_open or _account_open or not _title_active:
+	if _starting or not _menu_ready or _has_title_modal() or not _title_active:
 		return
 	_leaderboard_open = true
 	for button in [button_start, button_saved, button_leaderboard, button_settings, button_quit, _account_button]:
@@ -290,11 +299,11 @@ func _refresh_account_button() -> void:
 	_account_button.text = AuthManager.display_name() if AuthManager.authenticated else ("CHECKING..." if not AuthManager.startup_check_complete else "GUEST")
 	if not AuthManager.authenticated and CloudSaveManager.is_account_context():
 		_account_button.text = "OFFLINE"
-	_account_button.disabled = not _menu_ready or not AuthManager.startup_check_complete or _starting or _account_open or _settings_open or _saved_open or _leaderboard_open
+	_account_button.disabled = not _menu_ready or not AuthManager.startup_check_complete or _starting or _has_title_modal()
 
 
 func _open_account() -> void:
-	if _starting or not _menu_ready or _settings_open or _saved_open or _leaderboard_open or _account_open or not _title_active:
+	if _starting or not _menu_ready or _has_title_modal() or not _title_active:
 		return
 	AuthManager.startup_prompt_handled = true
 	_account_was_authenticated = AuthManager.authenticated
@@ -317,6 +326,7 @@ func _on_account_closed() -> void:
 		_account_button.grab_focus()
 	else:
 		button_start.grab_focus()
+	_sync_account_state.call_deferred()
 
 
 func _queue_account_sync(_value: bool = false) -> void:
@@ -333,12 +343,126 @@ func _sync_account_state() -> void:
 		elif AuthManager.authenticated and not AuthManager.busy and not _account_was_authenticated:
 			_account_panel.close()
 		return
-	if not _menu_ready or _settings_open or _saved_open or _leaderboard_open or not AuthManager.startup_check_complete or AuthManager.busy:
+	if not _menu_ready or _has_title_modal():
+		return
+	if _try_show_update() or not AuthManager.startup_check_complete or AuthManager.busy:
 		return
 	if AuthManager.authenticated:
 		AuthManager.startup_prompt_handled = true
 	elif not LevelManager.tutorial_preview and not AuthManager.startup_prompt_handled:
 		_open_account()
+
+
+func _has_title_modal() -> bool:
+	return _settings_open or _saved_open or _leaderboard_open or _account_open or _update_open
+
+
+func _build_update_dialog() -> void:
+	_update_dialog = GameUpdateDialog.new()
+	_update_dialog.name = "UpdateDialog"
+	add_child(_update_dialog)
+	_update_dialog.update_pressed.connect(_submit_update)
+	_update_dialog.later_pressed.connect(_defer_update)
+	_update_dialog.cancel_pressed.connect(_cancel_update)
+	GameUpdate.state_changed.connect(_on_update_state_changed)
+
+
+func _try_show_update() -> bool:
+	if _update_dialog == null or GameUpdate.is_deferred() or not _title_active or _starting or not _menu_ready or _has_title_modal():
+		return false
+	var status := GameUpdate.get_status()
+	var target := str(status.get("target_version", ""))
+	if status.get("state") != "available" or target.is_empty():
+		return false
+	_update_open = true
+	_update_target = target
+	_update_return_focus = get_viewport().gui_get_focus_owner()
+	_set_update_menu_locked(true)
+	_update_dialog.offer(target, str(status.get("notes", "")))
+	return true
+
+
+func _set_update_menu_locked(locked: bool) -> void:
+	title_ui.process_mode = Node.PROCESS_MODE_DISABLED if locked else Node.PROCESS_MODE_INHERIT
+	for button in [button_start, button_saved, button_leaderboard, button_settings, button_quit]:
+		button.disabled = locked
+	_refresh_account_button()
+
+
+func _submit_update() -> void:
+	if not _update_open or _update_requested or _update_applying:
+		return
+	var status := GameUpdate.get_status()
+	if status.get("target_version") == _update_target and status.get("state") == "ready":
+		_apply_update()
+		return
+	if GameUpdate.request_download() != OK:
+		_update_dialog.failed("Could not start the download. You can retry or play this version.")
+		return
+	_update_requested = true
+	_update_attempt += 1
+	_update_dialog.waiting()
+	_watch_download_start(_update_attempt)
+
+
+func _watch_download_start(attempt: int) -> void:
+	await get_tree().create_timer(8.0, true).timeout
+	if _update_open and _update_requested and not _update_applying and attempt == _update_attempt:
+		_update_requested = false
+		_update_dialog.failed("The update has not started. You can retry or play this version.")
+
+
+func _on_update_state_changed(status: Dictionary) -> void:
+	if not _update_open:
+		_try_show_update()
+		return
+	if status.get("target_version", "") != _update_target:
+		if not _update_applying:
+			_defer_update()
+		return
+	if not _update_requested or _update_applying:
+		return
+	match status.get("state"):
+		"downloading":
+			_update_attempt += 1
+			_update_dialog.downloading(float(status.get("progress", 0)))
+		"ready":
+			_apply_update()
+		"error":
+			_update_requested = false
+			_update_dialog.failed("The download failed. Check your connection and retry.")
+
+
+func _apply_update() -> void:
+	_update_applying = true
+	_update_dialog.preparing()
+	var error := await GameUpdate.prepare_and_apply()
+	if error == OK:
+		return
+	_update_applying = false
+	_update_requested = false
+	_update_dialog.failed("The game could not close safely for the update. You can retry or keep playing.")
+
+
+func _cancel_update() -> void:
+	if _update_requested and not _update_applying:
+		GameUpdate.cancel_download()
+	_defer_update()
+
+
+func _defer_update() -> void:
+	if not _update_open or _update_applying:
+		return
+	GameUpdate.defer_for_session()
+	_update_open = false
+	_update_requested = false
+	_update_dialog.hide()
+	_set_update_menu_locked(false)
+	if is_instance_valid(_update_return_focus):
+		_update_return_focus.grab_focus()
+	else:
+		button_start.grab_focus()
+	_sync_account_state.call_deferred()
 
 
 func exit_title_screen() -> void:

@@ -52,6 +52,8 @@ var _last_rx_msec: int = 0
 var _last_ping_msec: int = 0
 var _texture: ImageTexture
 var _pid: int = -1
+var _restart_after_stop := false
+var _stopping := false
 var _toast: Node
 
 
@@ -217,16 +219,51 @@ func _start_recognizer() -> void:
 		# 配置的是绝对路径但文件不存在（换了机器）时，退回 PATH 里的 python
 		if python.is_absolute_path() and not FileAccess.file_exists(python):
 			python = "python"
-	_pid = OS.create_process(python, ["-u", main_py, "--managed"])
+	var args := ["-u", main_py, "--managed"]
+	if OS.has_feature("template") and OS.get_name() == "Windows":
+		args.append_array(["--data-dir", OS.get_user_data_dir().path_join("gesture")])
+	_pid = OS.create_process(python, args)
 	if _pid <= 0:
 		push_warning("GestureInput: 启动识别进程失败（%s）" % python)
 		_pid = -1
 
 
+func stop_managed_recognizer() -> Error:
+	if _stopping:
+		return ERR_BUSY
+	_stopping = true
+	_restart_after_stop = _pid > 0
+	if _pid > 0:
+		_send_cmd({"cmd": "quit"})
+		var deadline := Time.get_ticks_msec() + 5000
+		while OS.is_process_running(_pid) and Time.get_ticks_msec() < deadline:
+			await get_tree().process_frame
+		if OS.is_process_running(_pid):
+			_stopping = false
+			return ERR_TIMEOUT
+		_pid = -1
+	_stopping = false
+	return OK
+
+
+func restart_managed_recognizer() -> void:
+	if _restart_after_stop:
+		_restart_after_stop = false
+		if _pid > 0 and OS.is_process_running(_pid):
+			return
+		if autostart and _bound and not OS.get_cmdline_user_args().has(NO_AUTOSTART_ARG):
+			_start_recognizer()
+
+
 func _stop_recognizer() -> void:
 	if _pid > 0:
 		_send_cmd({"cmd": "quit"})
-		OS.kill(_pid)
+		# _exit_tree 无法 await；同步短暂等待，确保 Python finally 完成录像 flush。
+		var deadline := Time.get_ticks_msec() + 1200
+		while OS.is_process_running(_pid) and Time.get_ticks_msec() < deadline:
+			OS.delay_msec(20)
+		if OS.is_process_running(_pid):
+			OS.kill(_pid)
 		_pid = -1
 
 

@@ -25,6 +25,8 @@ var _saved_games: Button
 var _slot_status: Label
 var _game_tab: Button
 var _audio_tab: Button
+var _import_gesture: Button
+var _gesture_dialog: FileDialog
 var _close: Button
 var _feedback: Label
 var _confirm: Control
@@ -241,6 +243,15 @@ func _build() -> void:
 		slider.value_changed.connect(_set_volume.bind(bus))
 		row.add_child(slider)
 		_sliders[bus] = slider
+	_import_gesture = _button("IMPORT GESTURE SETTINGS", _audio, _choose_gesture_state)
+	_import_gesture.custom_minimum_size.y = 18
+	_import_gesture.visible = false
+	_gesture_dialog = FileDialog.new()
+	_gesture_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	_gesture_dialog.access = FileDialog.ACCESS_FILESYSTEM
+	_gesture_dialog.filters = PackedStringArray(["*.json ; Gesture state"])
+	_gesture_dialog.file_selected.connect(_import_gesture_state)
+	add_child(_gesture_dialog)
 	_slot_status = _label("", 8)
 	_slot_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_slot_status.clip_text = true
@@ -357,6 +368,7 @@ func _refresh() -> void:
 	_restart.visible = not _title_context and restart_handler.is_valid()
 	_title.visible = not _title_context
 	_saved_games.visible = not _title_context
+	_import_gesture.visible = _can_import_gesture() and _audio.visible
 	for bus: StringName in _sliders:
 		if AudioManager.has_method("get_bus_volume"):
 			_on_volume_changed(bus, float(AudioManager.call("get_bus_volume", bus)))
@@ -377,6 +389,7 @@ func _use_bag_item(kind: int) -> void:
 func _set_page(audio_page: bool) -> void:
 	_game.visible = not audio_page
 	_audio.visible = audio_page
+	_import_gesture.visible = _can_import_gesture() and audio_page
 	_slot_status.visible = not audio_page
 	_game_tab.set_pressed_no_signal(not audio_page)
 	_audio_tab.set_pressed_no_signal(audio_page)
@@ -490,8 +503,8 @@ func _confirm_action() -> void:
 		hide_pause_menu()
 		action.call()
 		return
-	var result: Variant = action.call()
 	_pending = Callable()
+	var result: Variant = await action.call()
 	_confirm.visible = false
 	if result is bool and not bool(result):
 		_update_focus()
@@ -552,3 +565,77 @@ func _on_storage_error(operation: StringName, error: int) -> void:
 		_feedback.text = "Could not save sound settings. Changes apply this session."
 	_feedback.add_theme_color_override("font_color", Color("#ffb08c"))
 	_feedback.tooltip_text = "%s: %s (%d)" % [String(operation), error_string(error), error]
+
+func _choose_gesture_state() -> void:
+	_gesture_dialog.popup_centered(Vector2i(700, 460))
+
+
+func _can_import_gesture() -> bool:
+	return _title_context and OS.has_feature("template") and OS.has_feature("windows")
+
+
+func _import_gesture_state(source: String) -> void:
+	if source.get_file() != "state.json" or source.get_base_dir().get_file() != "gesture":
+		_feedback.text = "Choose gesture/state.json from the old game folder."
+		return
+	var source_file := FileAccess.open(source, FileAccess.READ)
+	if source_file == null or source_file.get_length() > 8192:
+		_feedback.text = "Could not read the selected gesture state."
+		return
+	var parser := JSON.new()
+	var parse_error := parser.parse(source_file.get_as_text())
+	source_file.close()
+	if parse_error != OK or not parser.data is Dictionary:
+		_feedback.text = "Gesture settings are invalid."
+		return
+	var value: Variant = parser.data.get("roi_index")
+	if not (value is int or value is float) or not is_finite(float(value)) or float(value) != floorf(float(value)):
+		_feedback.text = "Gesture settings are invalid."
+		return
+	var cfg: Variant = JSON.parse_string(FileAccess.get_file_as_string(_gesture_config_path()))
+	var presets: Variant = cfg.get("roi_presets") if cfg is Dictionary else null
+	if not presets is Array or value < 0 or value >= presets.size():
+		_feedback.text = "Gesture settings contain an unsupported camera region."
+		return
+	var target := ProjectSettings.globalize_path("user://gesture/state.json")
+	var index := int(value)
+	if FileAccess.file_exists(target):
+		_ask("Replace current gesture settings?", _commit_gesture_import.bind(target, index), false, true, "CURRENT SETTINGS WILL BE REPLACED")
+	else:
+		await _commit_gesture_import(target, index)
+
+func _gesture_config_path() -> String:
+	var dir := OS.get_executable_path().get_base_dir().path_join("gesture") if OS.has_feature("template") else ProjectSettings.globalize_path("res://gesture")
+	return dir.path_join("config.json")
+
+func _commit_gesture_import(target: String, index: int) -> bool:
+	var err: Error = await GestureInput.stop_managed_recognizer()
+	if err != OK:
+		_feedback.text = "Could not stop gesture recognition. Please retry."
+		GestureInput.restart_managed_recognizer()
+		return false
+	var tmp := target + ".tmp"
+	var dir_error := DirAccess.make_dir_recursive_absolute(target.get_base_dir())
+	if dir_error != OK and dir_error != ERR_ALREADY_EXISTS:
+		_feedback.text = "Could not create gesture data folder."
+		GestureInput.restart_managed_recognizer()
+		return false
+	var file := FileAccess.open(tmp, FileAccess.WRITE)
+	if file == null:
+		_feedback.text = "Could not write gesture settings."
+		GestureInput.restart_managed_recognizer()
+		return false
+	file.store_string(JSON.stringify({"roi_index": index}))
+	file.flush()
+	err = file.get_error()
+	file.close()
+	if err == OK:
+		err = DirAccess.rename_absolute(tmp, target)
+	if err != OK:
+		DirAccess.remove_absolute(tmp)
+		_feedback.text = "Could not replace gesture settings."
+		GestureInput.restart_managed_recognizer()
+		return false
+	GestureInput.restart_managed_recognizer()
+	_feedback.text = "Gesture settings imported."
+	return true

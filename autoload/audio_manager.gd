@@ -84,24 +84,25 @@ func _load_settings() -> void:
 
 
 ## Safe to call before quitting from UI; unchanged/uninitialized settings never write.
-func flush_settings() -> void:
+func flush_settings() -> Error:
 	if not _settings_initialized or not _settings_dirty:
-		return
+		return OK
 	_save_timer.stop()
 	var config := ConfigFile.new()
 	# Reload so other settings sections are retained. Do not overwrite unreadable files.
 	var error := config.load(SETTINGS_PATH)
 	if error != OK and error != ERR_FILE_NOT_FOUND:
 		_report_storage_error(&"save", error)
-		return
+		return error
 	for bus in VOLUME_BUSES:
 		config.set_value("audio", String(bus), get_bus_volume(bus))
 	error = config.save(SETTINGS_PATH)
 	last_settings_error = error
 	if error != OK:
 		_report_storage_error(&"save", error)
-		return
+		return error
 	_settings_dirty = false
+	return OK
 
 
 func _report_storage_error(operation: StringName, error: int) -> void:

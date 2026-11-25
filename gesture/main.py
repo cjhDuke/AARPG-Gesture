@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import tempfile
 import sys
 import time
 
@@ -26,6 +27,7 @@ def load_config(path):
 def parse_args():
     p = argparse.ArgumentParser(description="传统图像处理手势识别（OpenCV）")
     p.add_argument("--config", default=os.path.join(HERE, "config.json"))
+    p.add_argument("--data-dir", help="绝对用户数据目录（保存 state.json、录像和截图）")
     p.add_argument("--video", help="用视频文件代替摄像头")
     p.add_argument("--image", help="用单张图片代替摄像头")
     p.add_argument("--no-mirror", action="store_true", help="图片/视频源不做水平镜像")
@@ -52,22 +54,57 @@ def open_source(args, cfg):
 STATE_PATH = os.path.join(HERE, "state.json")
 
 
-def load_roi_index(cfg):
+def resolve_user_paths(data_dir=None, script_dir=HERE):
+    if data_dir:
+        if not os.path.isabs(data_dir):
+            raise ValueError("--data-dir must be an absolute path")
+        root = os.path.abspath(data_dir)
+    else:
+        root = os.path.abspath(script_dir)
+    return {"root": root, "state": os.path.join(root, "state.json"),
+            "recordings": os.path.join(root, "recordings"),
+            "screenshots": os.path.join(root, "screenshots")}
+
+
+def valid_roi_index(path, preset_count):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            value = json.load(f).get("roi_index")
+        return value if type(value) is int and 0 <= value < preset_count else None
+    except (OSError, ValueError, AttributeError, TypeError):
+        return None
+
+
+def load_roi_index(cfg, state_path=STATE_PATH):
     """读取上次选的操作框预设（存在 state.json 里），没有就用配置里的默认值。"""
     try:
-        with open(STATE_PATH, "r", encoding="utf-8") as f:
-            idx = int(json.load(f)["roi_index"])
+        idx = valid_roi_index(state_path, len(cfg["roi_presets"]))
+        if idx is None:
+            raise ValueError("invalid state")
     except (OSError, ValueError, KeyError, TypeError):
         idx = int(cfg.get("roi_index", 0))
     return idx % len(cfg["roi_presets"])
 
 
-def save_roi_index(idx):
+def save_roi_index(idx, state_path=STATE_PATH):
+    temporary = None
     try:
-        with open(STATE_PATH, "w", encoding="utf-8") as f:
+        folder = os.path.dirname(os.path.abspath(state_path))
+        os.makedirs(folder, exist_ok=True)
+        fd, temporary = tempfile.mkstemp(prefix=".state-", suffix=".tmp", dir=folder)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump({"roi_index": idx}, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temporary, state_path)
     except OSError:
         pass
+    finally:
+        if temporary is not None:
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
 
 
 def crop_roi(frame, roi):
@@ -102,6 +139,7 @@ def encode_stage(stage, frame, rect, seg, feats, cfg):
 def run():
     args = parse_args()
     cfg = load_config(args.config)
+    paths = resolve_user_paths(args.data_dir)
     show_window = args.window if args.window is not None else (not args.managed)
 
     source = open_source(args, cfg)
@@ -119,16 +157,16 @@ def run():
         return 3
     segmenter = Segmenter(cfg)
     debouncer, zones, smoother = GestureDebouncer(cfg), ZoneTracker(cfg), PointSmoother(cfg)
-    view = debug_view.DebugView(os.path.join(HERE, "screenshots")) if show_window else None
+    view = debug_view.DebugView(paths["screenshots"]) if show_window else None
     stage, seq = 0, 0
-    roi_idx = load_roi_index(cfg)
+    roi_idx = load_roi_index(cfg, paths["state"])
     if args.video:  # 回放自己录的视频：沿用录制时的操作框和背景模型
         meta, bg = load_sidecar(args.video)
         if meta:
             roi_idx = int(meta.get("roi_index", roi_idx)) % len(cfg["roi_presets"])
             if bg is not None and bg.ndim == 3:
                 segmenter.set_background(bg)
-    recorder = Recorder(os.path.join(HERE, "recordings"), cfg.get("record_max_seconds", 30.0))
+    recorder = Recorder(paths["recordings"], cfg.get("record_max_seconds", 30.0))
     toggle_rec = False
     auto_cal_at = int(cfg["calibration"].get("auto_start_frame", 0))
     was_calibrated = segmenter.calibrated
@@ -161,7 +199,7 @@ def run():
             if cycle_roi:  # 换操作框位置：脸或杂物在框里时用
                 cycle_roi = False
                 roi_idx = (roi_idx + 1) % len(cfg["roi_presets"])
-                save_roi_index(roi_idx)
+                save_roi_index(roi_idx, paths["state"])
                 debouncer, zones = GestureDebouncer(cfg), ZoneTracker(cfg)
                 smoother.reset()
                 segmenter.calibrate()  # 换了位置，背景要重新采集
@@ -223,7 +261,7 @@ def run():
                 elif name == "roi":
                     cycle_roi = True
                 elif name == "quit":
-                    return 0
+                    return exit_code  # Leave the frame loop and flush resources in finally.
 
             if view:
                 info = {"gesture": gesture, "raw": feats.gesture, "zone": zone,
