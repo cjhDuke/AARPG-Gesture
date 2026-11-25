@@ -6,7 +6,7 @@
   demo   张开手沿矩形轨迹移动 -> 握拳并移动 -> 张开 -> 手消失 1 秒 -> 重复
   idle   已标定、操作框内没有手
   uncal  未标定（calibrated=false，没有手势）
-状态包字段见 docs/ai/gesture-protocol.md。
+状态包示例见本脚本，收发实现见 net.py。
 """
 import argparse
 import json

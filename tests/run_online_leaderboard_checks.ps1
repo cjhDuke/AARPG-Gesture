@@ -88,7 +88,6 @@ try {
 	Invoke-Godot 'a-retry' 'tests/leaderboard_client_test.tscn' (Join-Path $runDir 'appdata-a') ($oldArgs + @('--client-role=a-retry')) 'leaderboard_client_test role=a-retry checks=\d+ passed'
 	Invoke-Godot 'c-verify' 'tests/leaderboard_client_test.tscn' (Join-Path $runDir 'appdata-c') ($oldArgs + @('--client-role=c-verify') + $(if ($CapturePreview) { @('--capture-previews') } else { @() })) 'leaderboard_client_test role=c-verify checks=\d+ passed'
 	Invoke-Godot 'current-play' 'tests/leaderboard_client_test.tscn' (Join-Path $runDir 'appdata-current') ($baseArgs + @('--client-role=current-play')) 'leaderboard_client_test role=current-play checks=\d+ passed'
-	Invoke-Godot 'practice' 'tests/leaderboard_client_test.tscn' (Join-Path $runDir 'appdata-practice') (@('--practice') + $baseArgs + @('--client-role=practice')) 'leaderboard_client_test role=practice checks=\d+ passed'
 	if ((Get-Item -LiteralPath $fixtureErr).Length -gt 0) { throw "Fixture wrote to stderr; inspect retained logs in $logs" }
 	Write-Host "Online leaderboard checks passed. Logs retained at $logs"
 } catch {

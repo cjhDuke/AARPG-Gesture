@@ -1,4 +1,4 @@
-"""手势识别主程序。用法见 argparse 帮助；协议见 docs/ai/gesture-protocol.md。"""
+"""手势识别主程序。用法见 argparse 帮助；UDP 收发见 net.py。"""
 import argparse
 import json
 import os

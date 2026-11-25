@@ -1,6 +1,6 @@
 # 技巧图标来源与接入
 
-来源：`D:/文件/AARPG Resource/Assets/skill/skill_icons_by_quintino_pixels/24x24/`，素材包 `skill_icons_by_quintino_pixels`。PNG 原样复制，保留 24×24 像素与图内自带边框；使用时最近邻缩放。
+图标来自 [Quintino Pixels 的 Free Pixel Art Skill Icons Pack](https://quintino-pixels.itch.io/free-pixel-art-skill-icons-pack) 中的 `24x24/` 目录。PNG 原样复制，保留 24×24 像素与图内自带边框；使用时最近邻缩放。
 
 | 项目文件 | 来源文件 | 原图辨识 |
 |---|---|---|

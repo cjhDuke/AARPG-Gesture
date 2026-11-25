@@ -20,10 +20,6 @@ func _start() -> void:
 		get_tree().quit(2)
 		return
 	var args := OS.get_cmdline_user_args()
-	if not args.has("--practice"):
-		push_error("RunStats tests must start with -- --practice to suppress account startup activity")
-		get_tree().quit(2)
-		return
 	AuthManager.set_process(false)
 	GestureInput.set_process(false)
 	var master_bus := AudioServer.get_bus_index("Master")

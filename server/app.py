@@ -46,7 +46,7 @@ class Settings:
     database: Path
     secret: str
     resend_key: str = ""
-    sender: str = "PSI HAND <noreply@mail.game.dukechen.top>"
+    sender: str = ""
     mail_daily_limit: int = 90
     code_cooldown: int = 60
 
@@ -59,9 +59,9 @@ class Settings:
         key_file = os.getenv("RESEND_API_KEY_FILE", "")
         key = Path(key_file).read_text(encoding="utf-8").strip() if key_file else os.getenv("RESEND_API_KEY", "")
         return cls(
-            Path(os.getenv("AUTH_DATABASE", "/var/lib/psi-hand-api/accounts.sqlite3")),
+            Path(os.getenv("AUTH_DATABASE", "accounts.sqlite3")),
             os.environ["AUTH_SECRET"], key,
-            os.getenv("MAIL_FROM", "PSI HAND <noreply@mail.game.dukechen.top>"),
+            os.getenv("MAIL_FROM", ""),
             int(os.getenv("MAIL_DAILY_LIMIT", "90")),
         )
 
